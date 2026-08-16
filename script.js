@@ -1,178 +1,416 @@
 // ============================================================
-// КАРТА МИГРАЦИЙ
+// ИНТЕРАКТИВНАЯ КАРТА МИГРАЦИЙ
+// ============================================================
+//
+// Структура файлов:
+//
+// index.html
+// script.js
+// style.css
+//
+// data/
+//   migration.csv
+//   NODES.csv
+//   EDGES.csv
+//   data.geojson
+//
+// ============================================================
+
+
+// ============================================================
+// 1. ФАЙЛЫ
 // ============================================================
 
 const FILES = {
+
     migration: "data/migration.csv",
+
     nodes: "data/NODES.csv",
+
     edges: "data/EDGES.csv",
+
     geojson: "data/data.geojson"
+
 };
 
 
 // ============================================================
-// НАСТРОЙКИ
+// 2. НАСТРОЙКИ
 // ============================================================
 
 const MAX_FLOW_WIDTH = 25;
+
 const MIN_FLOW_WIDTH = 1.5;
+
 const FLOW_OPACITY = 0.65;
+
 const FLOW_COLOR = "#c62828";
+
 const NODE_COLOR = "#222";
+
 const NODE_RADIUS = 4;
 
 
 // ============================================================
-// КАРТА
+// 3. СОЗДАЁМ КАРТУ
 // ============================================================
 
 const map = L.map("map", {
+
     zoomControl: true
-}).setView([55, 70], 4);
-
-
-L.tileLayer(
-    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    {
-        attribution: "&copy; OpenStreetMap contributors"
-    }
-).addTo(map);
-
-
-// ============================================================
-// СЛОИ
-// ============================================================
-
-const regionsLayer = L.layerGroup().addTo(map);
-const flowsLayer = L.layerGroup().addTo(map);
-const nodesLayer = L.layerGroup().addTo(map);
-
-
-// ============================================================
-// ДАННЫЕ
-// ============================================================
-
-let migrations = [];
-let nodes = {};
-let rawRoutes = [];
-let segments = [];
-let regions = {};
-
-
-// ============================================================
-// ЗАПУСК
-// ============================================================
-
-Promise.all([
-
-    loadCSV(FILES.migration),
-
-    loadCSV(FILES.nodes),
-
-    loadCSV(FILES.edges),
-
-    loadGeoJSON(FILES.geojson)
-
-])
-
-.then(([migrationData, nodeData, edgeData, geojson]) => {
-
-    console.log("Migration:", migrationData);
-    console.log("Nodes:", nodeData);
-    console.log("Edges:", edgeData);
-    console.log("GeoJSON:", geojson);
-
-
-    prepareMigrations(migrationData);
-
-    prepareNodes(nodeData);
-
-    prepareGeoJSON(geojson);
-
-    prepareRoutes(edgeData);
-
-
-    drawRegions();
-
-    drawNodes();
-
-    calculateSegments();
-
-    drawFlows();
-
-    fitMapToRegions();
-
-
-    console.log("Карта успешно построена.");
-
-})
-
-.catch(error => {
-
-    console.error("ОШИБКА:", error);
-
-    alert(
-        "Ошибка загрузки данных.\n\n" +
-        error.message +
-        "\n\n" +
-        "Откройте F12 → Console для подробностей."
-    );
 
 });
 
 
+L.tileLayer(
+
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+
+    {
+
+        attribution:
+            "&copy; OpenStreetMap contributors"
+
+    }
+
+).addTo(map);
+
+
+map.setView(
+
+    [55, 70],
+
+    4
+
+);
+
+
 // ============================================================
-// ЗАГРУЗКА CSV БЕЗ PAPAPARSE
+// 4. СЛОИ
 // ============================================================
 
-async function loadCSV(file) {
+const regionsLayer =
+    L.layerGroup().addTo(map);
 
-    const response = await fetch(file);
 
-    if (!response.ok) {
+const flowsLayer =
+    L.layerGroup().addTo(map);
 
-        throw new Error(
-            `Не удалось загрузить ${file}. HTTP ${response.status}`
+
+const nodesLayer =
+    L.layerGroup().addTo(map);
+
+
+// ============================================================
+// 5. ХРАНИЛИЩА ДАННЫХ
+// ============================================================
+
+let migrations = [];
+
+let nodes = {};
+
+let rawRoutes = [];
+
+let segments = [];
+
+let regions = {};
+
+
+// ============================================================
+// 6. ЗАПУСК ЗАГРУЗКИ
+// ============================================================
+
+Promise.all([
+
+    loadCSV(
+        FILES.migration
+    ),
+
+    loadCSV(
+        FILES.nodes
+    ),
+
+    loadCSVRows(
+        FILES.edges
+    ),
+
+    loadGeoJSON(
+        FILES.geojson
+    )
+
+])
+
+.then(
+
+    ([
+
+        migrationData,
+
+        nodeData,
+
+        edgeData,
+
+        geojson
+
+    ]) => {
+
+
+        console.log(
+            "===================================="
+        );
+
+        console.log(
+            "ФАЙЛЫ ЗАГРУЖЕНЫ"
+        );
+
+        console.log(
+            "===================================="
+        );
+
+
+        console.log(
+            "Migration:",
+            migrationData
+        );
+
+
+        console.log(
+            "Nodes:",
+            nodeData
+        );
+
+
+        console.log(
+            "Edges:",
+            edgeData
+        );
+
+
+        console.log(
+            "GeoJSON:",
+            geojson
+        );
+
+
+        // ----------------------------------------
+        // Подготавливаем данные
+        // ----------------------------------------
+
+        prepareMigrations(
+            migrationData
+        );
+
+
+        prepareNodes(
+            nodeData
+        );
+
+
+        prepareGeoJSON(
+            geojson
+        );
+
+
+        prepareRoutes(
+            edgeData
+        );
+
+
+        // ----------------------------------------
+        // Рисуем карту
+        // ----------------------------------------
+
+        drawRegions();
+
+        drawNodes();
+
+        calculateSegments();
+
+        drawFlows();
+
+        fitMapToRegions();
+
+
+        // ----------------------------------------
+        // Диагностика
+        // ----------------------------------------
+
+        checkRoutes();
+
+
+        console.log(
+            "===================================="
+        );
+
+        console.log(
+            "КАРТА ГОТОВА"
+        );
+
+        console.log(
+            "===================================="
         );
 
     }
 
-    const text = await response.text();
+)
 
-    return parseCSV(text);
+.catch(
+
+    error => {
+
+        console.error(
+            "ОШИБКА:",
+            error
+        );
+
+
+        alert(
+
+            "Ошибка загрузки данных.\n\n" +
+
+            error.message +
+
+            "\n\n" +
+
+            "Откройте F12 → Console."
+
+        );
+
+    }
+
+);
+
+
+// ============================================================
+// 7. ЗАГРУЗКА ОБЫЧНОГО CSV
+// ============================================================
+
+async function loadCSV(file) {
+
+    const response =
+        await fetch(file);
+
+
+    if (!response.ok) {
+
+        throw new Error(
+
+            `Не удалось загрузить ${file}. ` +
+
+            `HTTP ${response.status}`
+
+        );
+
+    }
+
+
+    const text =
+        await response.text();
+
+
+    return parseCSV(
+        text
+    );
+
 }
 
 
 // ============================================================
-// ПРОСТОЙ ПАРСЕР CSV С РАЗДЕЛИТЕЛЕМ ;
+// 8. ЗАГРУЗКА EDGES CSV
+// ============================================================
+//
+// В отличие от обычного CSV здесь нам необходимо
+// сохранить все колонки.
+//
+// Например:
+//
+// N1;N2;N3;N4;Тургайская
+//
+// нельзя превращать в объект:
+//
+// {from:"N1",to:"N2"}
+//
+// потому что остальные значения потеряются.
+//
+// ============================================================
+
+async function loadCSVRows(file) {
+
+    const response =
+        await fetch(file);
+
+
+    if (!response.ok) {
+
+        throw new Error(
+
+            `Не удалось загрузить ${file}. ` +
+
+            `HTTP ${response.status}`
+
+        );
+
+    }
+
+
+    const text =
+        await response.text();
+
+
+    return parseCSVRows(
+        text
+    );
+
+}
+
+
+// ============================================================
+// 9. ПАРСЕР ОБЫЧНОГО CSV
 // ============================================================
 
 function parseCSV(text) {
 
-    // Убираем BOM
-
-    text = text.replace(/^\uFEFF/, "");
-
-
-    // Разбиваем на строки
-
-    const lines = text
-        .replace(/\r\n/g, "\n")
-        .replace(/\r/g, "\n")
-        .split("\n")
-        .filter(line => line.trim() !== "");
+    text =
+        text.replace(
+            /^\uFEFF/,
+            ""
+        );
 
 
-    if (lines.length === 0) {
+    text =
+        text
+            .replace(
+                /\r\n/g,
+                "\n"
+            )
+            .replace(
+                /\r/g,
+                "\n"
+            );
+
+
+    const lines =
+        text
+            .split("\n")
+            .filter(
+                line =>
+                    line.trim() !== ""
+            );
+
+
+    if (
+        lines.length === 0
+    ) {
 
         return [];
 
     }
 
 
-    const headers = parseCSVLine(
-        lines[0]
-    );
+    const headers =
+        parseCSVLine(
+            lines[0]
+        );
 
 
     const result = [];
@@ -194,18 +432,37 @@ function parseCSV(text) {
 
 
         headers.forEach(
-            (header, index) => {
+            (
+                header,
+                index
+            ) => {
 
-                row[header.trim()] =
+                row[
+                    header
+                        .replace(
+                            /^\uFEFF/,
+                            ""
+                        )
+                        .trim()
+                ] =
+
                     values[index] !== undefined
-                        ? values[index].trim()
-                        : "";
+
+                        ?
+
+                        values[index].trim()
+
+                        :
+
+                        "";
 
             }
         );
 
 
-        result.push(row);
+        result.push(
+            row
+        );
 
     }
 
@@ -216,7 +473,98 @@ function parseCSV(text) {
 
 
 // ============================================================
-// РАЗБОР ОДНОЙ СТРОКИ CSV
+// 10. ПАРСЕР EDGES.CSV
+// ============================================================
+
+function parseCSVRows(text) {
+
+    text =
+        text.replace(
+            /^\uFEFF/,
+            ""
+        );
+
+
+    text =
+        text
+            .replace(
+                /\r\n/g,
+                "\n"
+            )
+            .replace(
+                /\r/g,
+                "\n"
+            );
+
+
+    const lines =
+        text
+            .split("\n")
+            .filter(
+                line =>
+                    line.trim() !== ""
+            );
+
+
+    if (
+        lines.length <= 1
+    ) {
+
+        return [];
+
+    }
+
+
+    const rows = [];
+
+
+    // Пропускаем заголовок from;to;...
+
+    for (
+        let i = 1;
+        i < lines.length;
+        i++
+    ) {
+
+        const values =
+            parseCSVLine(
+                lines[i]
+            )
+            .map(
+                value =>
+                    String(value)
+                        .replace(
+                            /^\uFEFF/,
+                            ""
+                        )
+                        .trim()
+            )
+            .filter(
+                value =>
+                    value !== ""
+            );
+
+
+        if (
+            values.length > 0
+        ) {
+
+            rows.push(
+                values
+            );
+
+        }
+
+    }
+
+
+    return rows;
+
+}
+
+
+// ============================================================
+// 11. ПАРСЕР ОДНОЙ СТРОКИ CSV
 // ============================================================
 
 function parseCSVLine(line) {
@@ -234,23 +582,29 @@ function parseCSVLine(line) {
         i++
     ) {
 
-        const char = line[i];
+        const char =
+            line[i];
 
 
-        if (char === '"') {
-
-            // Двойные кавычки внутри кавычек
+        if (
+            char === '"'
+        ) {
 
             if (
+
                 insideQuotes &&
+
                 line[i + 1] === '"'
+
             ) {
 
                 current += '"';
 
                 i++;
 
-            } else {
+            }
+
+            else {
 
                 insideQuotes =
                     !insideQuotes;
@@ -259,9 +613,13 @@ function parseCSVLine(line) {
 
         }
 
+
         else if (
+
             char === ";" &&
+
             !insideQuotes
+
         ) {
 
             result.push(
@@ -272,9 +630,11 @@ function parseCSVLine(line) {
 
         }
 
+
         else {
 
-            current += char;
+            current +=
+                char;
 
         }
 
@@ -292,7 +652,7 @@ function parseCSVLine(line) {
 
 
 // ============================================================
-// GEOJSON
+// 12. GEOJSON
 // ============================================================
 
 async function loadGeoJSON(file) {
@@ -304,7 +664,11 @@ async function loadGeoJSON(file) {
     if (!response.ok) {
 
         throw new Error(
-            `Не удалось загрузить ${file}. HTTP ${response.status}`
+
+            `Не удалось загрузить ${file}. ` +
+
+            `HTTP ${response.status}`
+
         );
 
     }
@@ -316,7 +680,7 @@ async function loadGeoJSON(file) {
 
 
 // ============================================================
-// MIGRATION.CSV
+// 13. MIGRATION.CSV
 // ============================================================
 
 function prepareMigrations(data) {
@@ -324,50 +688,75 @@ function prepareMigrations(data) {
     migrations = [];
 
 
-    data.forEach(row => {
+    data.forEach(
+        row => {
 
-        const origin =
-            String(
-                row.Origin || ""
-            )
-            .replace(/^\uFEFF/, "")
-            .trim();
+            const origin =
 
-
-        const number =
-            parseFloat(
                 String(
-                    row.Number || "0"
+                    row.Origin || ""
                 )
-                .replace(/\s/g, "")
-                .replace(",", ".")
-            );
+
+                .replace(
+                    /^\uFEFF/,
+                    ""
+                )
+
+                .trim();
 
 
-        if (
-            !origin ||
-            isNaN(number) ||
-            number <= 0
-        ) {
+            const number =
 
-            return;
+                parseFloat(
+
+                    String(
+                        row.Number || "0"
+                    )
+
+                    .replace(
+                        /\s/g,
+                        ""
+                    )
+
+                    .replace(
+                        ",",
+                        "."
+                    )
+
+                );
+
+
+            if (
+
+                !origin ||
+
+                isNaN(number) ||
+
+                number <= 0
+
+            ) {
+
+                return;
+
+            }
+
+
+            migrations.push({
+
+                origin:
+                    origin,
+
+                number:
+                    number
+
+            });
 
         }
-
-
-        migrations.push({
-
-            origin: origin,
-
-            number: number
-
-        });
-
-    });
+    );
 
 
     console.log(
-        "Загружено миграций:",
+        "Миграций загружено:",
         migrations.length
     );
 
@@ -375,7 +764,7 @@ function prepareMigrations(data) {
 
 
 // ============================================================
-// NODES.CSV
+// 14. NODES.CSV
 // ============================================================
 
 function prepareNodes(data) {
@@ -383,84 +772,134 @@ function prepareNodes(data) {
     nodes = {};
 
 
-    data.forEach(row => {
+    data.forEach(
+        row => {
 
-        const id =
-            String(
-                row.id || ""
-            )
-            .replace(/^\uFEFF/, "")
-            .trim();
+            const id =
+
+                String(
+                    row.id || ""
+                )
+
+                .replace(
+                    /^\uFEFF/,
+                    ""
+                )
+
+                .trim();
 
 
-        if (!id) {
+            if (!id) {
 
-            return;
+                return;
+
+            }
+
+
+            const lat =
+
+                parseFloat(
+
+                    String(
+                        row.lat || ""
+                    )
+
+                    .replace(
+                        ",",
+                        "."
+                    )
+
+                    .replace(
+                        /,$/,
+                        ""
+                    )
+
+                    .trim()
+
+                );
+
+
+            const lon =
+
+                parseFloat(
+
+                    String(
+                        row.lon || ""
+                    )
+
+                    .replace(
+                        ",",
+                        "."
+                    )
+
+                    .replace(
+                        /,$/,
+                        ""
+                    )
+
+                    .trim()
+
+                );
+
+
+            if (
+
+                isNaN(lat) ||
+
+                isNaN(lon)
+
+            ) {
+
+                console.warn(
+
+                    "Некорректные координаты узла:",
+
+                    row
+
+                );
+
+                return;
+
+            }
+
+
+            nodes[id] = {
+
+                id:
+                    id,
+
+                lat:
+                    lat,
+
+                lon:
+                    lon
+
+            };
 
         }
-
-
-        const lat =
-            parseFloat(
-                String(
-                    row.lat || ""
-                )
-                .replace(",", ".")
-                .trim()
-            );
-
-
-        const lon =
-            parseFloat(
-                String(
-                    row.lon || ""
-                )
-                .replace(",", ".")
-                .trim()
-            );
-
-
-        if (
-            isNaN(lat) ||
-            isNaN(lon)
-        ) {
-
-            console.warn(
-                "Некорректные координаты:",
-                row
-            );
-
-            return;
-
-        }
-
-
-        nodes[id] = {
-
-            id: id,
-
-            lat: lat,
-
-            lon: lon
-
-        };
-
-    });
+    );
 
 
     console.log(
-        "Загружено узлов:",
-        Object.keys(nodes).length
+
+        "Узлов загружено:",
+
+        Object.keys(
+            nodes
+        ).length
+
     );
 
 }
 
 
 // ============================================================
-// GEOJSON
+// 15. GEOJSON → РЕГИОНЫ
 // ============================================================
 
-function prepareGeoJSON(geojson) {
+function prepareGeoJSON(
+    geojson
+) {
 
     regions = {};
 
@@ -470,123 +909,194 @@ function prepareGeoJSON(geojson) {
     ) {
 
         throw new Error(
-            "В data.geojson отсутствует массив features."
+
+            "В data.geojson отсутствует features."
+
         );
 
     }
 
 
-    geojson.features.forEach(feature => {
+    geojson.features.forEach(
+        feature => {
 
-        const name =
-            String(
-                feature.properties?.prov_ENG || ""
-            )
-            .replace(/^\uFEFF/, "")
-            .trim();
+            const name =
+
+                String(
+
+                    feature
+                        .properties
+                        ?.prov_ENG ||
+
+                    ""
+
+                )
+
+                .replace(
+                    /^\uFEFF/,
+                    ""
+                )
+
+                .trim();
 
 
-        if (!name) {
+            if (!name) {
 
-            return;
+                return;
+
+            }
+
+
+            regions[name] = {
+
+                feature:
+                    feature,
+
+                name:
+                    name
+
+            };
 
         }
-
-
-        regions[name] = {
-
-            feature: feature,
-
-            name: name
-
-        };
-
-    });
+    );
 
 
     console.log(
-        "Загружено регионов:",
-        Object.keys(regions).length
+
+        "Регионов GeoJSON:",
+
+        Object.keys(
+            regions
+        ).length
+
     );
 
 }
 
 
 // ============================================================
-// EDGES.CSV
+// 16. EDGES → ГРАФ
+// ============================================================
+//
+// Каждая строка:
+//
+// N1;N2;N3;N4;N5
+//
+// превращается в:
+//
+// N1 → N2
+// N2 → N3
+// N3 → N4
+// N4 → N5
+//
 // ============================================================
 
-function prepareRoutes(data) {
+function prepareRoutes(
+    data
+) {
 
     rawRoutes = [];
 
 
-    data.forEach(row => {
+    data.forEach(
+        row => {
 
-        const values =
-            Object.values(row)
+            const values =
 
-            .map(value =>
-                String(value || "")
-                    .replace(/^\uFEFF/, "")
-                    .trim()
-            )
+                row
 
-            .filter(value =>
-                value !== ""
-            );
+                    .map(
+                        value =>
+                            String(
+                                value
+                            )
+
+                            .replace(
+                                /^\uFEFF/,
+                                ""
+                            )
+
+                            .trim()
+                    )
+
+                    .filter(
+                        value =>
+                            value !== ""
+                    );
 
 
-        if (
-            values.length < 2
-        ) {
+            if (
+                values.length < 2
+            ) {
 
-            return;
+                return;
+
+            }
+
+
+            for (
+                let i = 0;
+                i < values.length - 1;
+                i++
+            ) {
+
+                const from =
+                    values[i];
+
+
+                const to =
+                    values[i + 1];
+
+
+                rawRoutes.push({
+
+                    from:
+                        from,
+
+                    to:
+                        to
+
+                });
+
+            }
 
         }
-
-
-        // Например:
-        //
-        // N1;N2;N3;N4;Тургайская
-        //
-        // превращается в:
-        //
-        // N1 → N2
-        // N2 → N3
-        // N3 → N4
-        // N4 → Тургайская
-
-
-        for (
-            let i = 0;
-            i < values.length - 1;
-            i++
-        ) {
-
-            rawRoutes.push({
-
-                from: values[i],
-
-                to: values[i + 1]
-
-            });
-
-        }
-
-    });
+    );
 
 
     console.log(
-        "Загружено рёбер:",
+        "===================================="
+    );
+
+
+    console.log(
+        "Всего рёбер:",
         rawRoutes.length
+    );
+
+
+    console.log(
+        "Первые 50 рёбер:"
+    );
+
+
+    console.table(
+        rawRoutes.slice(
+            0,
+            50
+        )
+    );
+
+
+    console.log(
+        "===================================="
     );
 
 }
 
 
 // ============================================================
-// ПРОВЕРКА ОБЪЕКТОВ
+// 17. ПРОВЕРКА: УЗЕЛ ИЛИ РЕГИОН
 // ============================================================
 
 function isNode(id) {
@@ -608,13 +1118,17 @@ function isRegion(id) {
 
 
 // ============================================================
-// ЦЕНТР ГУБЕРНИИ
+// 18. ЦЕНТР РЕГИОНА
 // ============================================================
 
-function getRegionCenter(regionName) {
+function getRegionCenter(
+    regionName
+) {
 
     const region =
-        regions[regionName];
+        regions[
+            regionName
+        ];
 
 
     if (!region) {
@@ -639,8 +1153,11 @@ function getRegionCenter(regionName) {
 
 
         return [
+
             center.lat,
+
             center.lng
+
         ];
 
     }
@@ -648,9 +1165,13 @@ function getRegionCenter(regionName) {
     catch (error) {
 
         console.warn(
-            "Не удалось получить центр:",
+
+            "Не удалось определить центр:",
+
             regionName
+
         );
+
 
         return null;
 
@@ -660,7 +1181,7 @@ function getRegionCenter(regionName) {
 
 
 // ============================================================
-// КООРДИНАТЫ ЛЮБОГО ОБЪЕКТА
+// 19. ПОЛУЧАЕМ КООРДИНАТЫ
 // ============================================================
 
 function getPoint(id) {
@@ -670,8 +1191,11 @@ function getPoint(id) {
     ) {
 
         return [
+
             nodes[id].lat,
+
             nodes[id].lon
+
         ];
 
     }
@@ -694,7 +1218,7 @@ function getPoint(id) {
 
 
 // ============================================================
-// РЕГИОНЫ
+// 20. РИСУЕМ РЕГИОНЫ
 // ============================================================
 
 function drawRegions() {
@@ -705,57 +1229,66 @@ function drawRegions() {
     Object.values(
         regions
     )
-    .forEach(region => {
+    .forEach(
+        region => {
 
-        const layer =
-            L.geoJSON(
-                region.feature,
-                {
+            const layer =
+                L.geoJSON(
 
-                    style: {
+                    region.feature,
 
-                        color: "#777",
+                    {
 
-                        weight: 0.8,
+                        style: {
 
-                        fillColor: "#eeeeee",
+                            color:
+                                "#777",
 
-                        fillOpacity: 0.25
+                            weight:
+                                0.8,
+
+                            fillColor:
+                                "#eeeeee",
+
+                            fillOpacity:
+                                0.25
+
+                        }
 
                     }
+
+                );
+
+
+            layer.bindTooltip(
+                region.name
+            );
+
+
+            layer.on(
+                "click",
+                () => {
+
+                    showRegionInfo(
+                        region.name
+                    );
 
                 }
             );
 
 
-        layer.bindTooltip(
-            region.name
-        );
+            layer.addTo(
+                regionsLayer
+            );
 
-
-        layer.on(
-            "click",
-            () => {
-
-                showRegionInfo(
-                    region.name
-                );
-
-            }
-        );
-
-
-        layer.addTo(
-            regionsLayer
-        );
-
-    });
+        }
+    );
 
 }
 
 
 // ============================================================
-// УЗЛЫ
+// 21. РИСУЕМ УЗЛЫ
 // ============================================================
 
 function drawNodes() {
@@ -766,85 +1299,92 @@ function drawNodes() {
     Object.values(
         nodes
     )
-    .forEach(node => {
+    .forEach(
+        node => {
 
-        L.circleMarker(
+            L.circleMarker(
 
-            [
-                node.lat,
-                node.lon
-            ],
+                [
 
-            {
+                    node.lat,
 
-                radius:
-                    NODE_RADIUS,
+                    node.lon
 
-                color:
-                    NODE_COLOR,
+                ],
 
-                weight:
-                    1,
+                {
 
-                fillColor:
-                    "#ffffff",
+                    radius:
+                        NODE_RADIUS,
 
-                fillOpacity:
-                    1
+                    color:
+                        NODE_COLOR,
 
-            }
+                    weight:
+                        1,
 
-        )
+                    fillColor:
+                        "#ffffff",
 
-        .bindTooltip(
-            node.id
-        )
+                    fillOpacity:
+                        1
 
-        .addTo(
-            nodesLayer
-        );
+                }
 
-    });
+            )
+
+            .bindTooltip(
+                node.id
+            )
+
+            .addTo(
+                nodesLayer
+            );
+
+        }
+    );
 
 }
 
 
 // ============================================================
-// ПОИСК ВСЕХ МАРШРУТОВ
+// 22. ПОИСК ВСЕХ ПУТЕЙ
+// ============================================================
+//
+// Например:
+//
+// Архангельская
+// ↓
+// N1
+// ↓
+// N2
+// ↓
+// N3
+// ↓
+// N4
+// ↓
+// Тургайская
+//
 // ============================================================
 
-function findAllPaths(start) {
+function findAllPaths(
+    start
+) {
 
     const paths = [];
 
 
-    const firstEdges =
-        rawRoutes.filter(
-            edge =>
-                edge.from === start
-        );
+    walkGraph(
 
+        start,
 
-    firstEdges.forEach(edge => {
+        [start],
 
-        walkGraph(
+        paths,
 
-            edge.to,
+        new Set()
 
-            [
-                start,
-                edge.to
-            ],
-
-            paths,
-
-            new Set([
-                start
-            ])
-
-        );
-
-    });
+    );
 
 
     return paths;
@@ -853,24 +1393,32 @@ function findAllPaths(start) {
 
 
 // ============================================================
-// ОБХОД ГРАФА
+// 23. ОБХОД ГРАФА
 // ============================================================
 
 function walkGraph(
+
     current,
+
     path,
+
     paths,
+
     visited
+
 ) {
 
-    // Дошли до губернии назначения
+
+    // ----------------------------------------
+    // Дошли до региона назначения
+    // ----------------------------------------
 
     if (
         isRegion(current)
     ) {
 
         paths.push(
-            path
+            [...path]
         );
 
         return;
@@ -878,23 +1426,9 @@ function walkGraph(
     }
 
 
-    // Неизвестный объект
-
-    if (
-        !isNode(current)
-    ) {
-
-        console.warn(
-            "Неизвестный объект:",
-            current
-        );
-
-        return;
-
-    }
-
-
+    // ----------------------------------------
     // Защита от циклов
+    // ----------------------------------------
 
     if (
         visited.has(current)
@@ -916,20 +1450,40 @@ function walkGraph(
     );
 
 
+    // ----------------------------------------
+    // Ищем исходящие рёбра
+    // ----------------------------------------
+
     const nextEdges =
+
         rawRoutes.filter(
+
             edge =>
                 edge.from === current
+
         );
 
+
+    // ----------------------------------------
+    // Тупик
+    // ----------------------------------------
 
     if (
         nextEdges.length === 0
     ) {
 
         console.warn(
+
             "Тупик:",
-            current
+
+            current,
+
+            "Путь:",
+
+            path.join(
+                " → "
+            )
+
         );
 
         return;
@@ -937,30 +1491,44 @@ function walkGraph(
     }
 
 
-    nextEdges.forEach(edge => {
+    // ----------------------------------------
+    // Продолжаем по всем веткам
+    // ----------------------------------------
 
-        walkGraph(
+    nextEdges.forEach(
+        edge => {
 
-            edge.to,
+            walkGraph(
 
-            [
-                ...path,
-                edge.to
-            ],
+                edge.to,
 
-            paths,
+                [
 
-            newVisited
+                    ...path,
 
-        );
+                    edge.to
 
-    });
+                ],
+
+                paths,
+
+                newVisited
+
+            );
+
+        }
+    );
 
 }
 
 
 // ============================================================
-// РАСЧЁТ ПОТОКОВ
+// 24. РАСЧЁТ ПОТОКОВ
+// ============================================================
+//
+// Если из одного узла есть несколько веток,
+// поток пока распределяется поровну.
+//
 // ============================================================
 
 function calculateSegments() {
@@ -968,106 +1536,175 @@ function calculateSegments() {
     const segmentMap = {};
 
 
-    migrations.forEach(migration => {
+    migrations.forEach(
+        migration => {
 
-        const paths =
-            findAllPaths(
-                migration.origin
-            );
-
-
-        if (
-            paths.length === 0
-        ) {
-
-            console.warn(
-                "Не найден маршрут:",
-                migration.origin
-            );
-
-            return;
-
-        }
+            const paths =
+                findAllPaths(
+                    migration.origin
+                );
 
 
-        // Если несколько веток,
-        // пока распределяем поток поровну.
-
-        const routeShare =
-            migration.number /
-            paths.length;
-
-
-        paths.forEach(path => {
-
-            for (
-                let i = 0;
-                i < path.length - 1;
-                i++
+            if (
+                paths.length === 0
             ) {
 
-                const from =
-                    path[i];
+                console.warn(
 
-                const to =
-                    path[i + 1];
+                    "===================================="
 
-
-                const key =
-                    from +
-                    "||" +
-                    to;
+                );
 
 
-                if (
-                    !segmentMap[key]
-                ) {
+                console.warn(
 
-                    segmentMap[key] = {
+                    "НЕ НАЙДЕН МАРШРУТ:",
 
-                        from: from,
+                    migration.origin
 
-                        to: to,
-
-                        value: 0,
-
-                        origins: {}
-
-                    };
-
-                }
+                );
 
 
-                segmentMap[key].value +=
-                    routeShare;
+                console.warn(
+
+                    "===================================="
+
+                );
 
 
-                if (
-                    !segmentMap[key]
-                        .origins[
-                            migration.origin
-                        ]
-                ) {
-
-                    segmentMap[key]
-                        .origins[
-                            migration.origin
-                        ] = 0;
-
-                }
-
-
-                segmentMap[key]
-                    .origins[
-                        migration.origin
-                    ] +=
-                    routeShare;
+                return;
 
             }
 
-        });
 
-    });
+            console.log(
+
+                migration.origin,
+
+                "→ найдено маршрутов:",
+
+                paths.length,
+
+                paths
+
+            );
+
+
+            // ----------------------------------------
+            // Если маршрутов несколько,
+            // распределяем поровну
+            // ----------------------------------------
+
+            const routeShare =
+
+                migration.number /
+
+                paths.length;
+
+
+            paths.forEach(
+                path => {
+
+
+                    for (
+                        let i = 0;
+                        i < path.length - 1;
+                        i++
+                    ) {
+
+                        const from =
+                            path[i];
+
+
+                        const to =
+                            path[i + 1];
+
+
+                        const key =
+
+                            from +
+
+                            "||" +
+
+                            to;
+
+
+                        if (
+                            !segmentMap[key]
+                        ) {
+
+                            segmentMap[key] = {
+
+                                from:
+                                    from,
+
+                                to:
+                                    to,
+
+                                value:
+                                    0,
+
+                                origins:
+                                    {}
+
+                            };
+
+                        }
+
+
+                        segmentMap[key]
+                            .value +=
+                            routeShare;
+
+
+                        if (
+
+                            !segmentMap[key]
+                                .origins[
+                                    migration.origin
+                                ]
+
+                            ===
+                            false
+
+                        ) {
+
+                            // ничего
+
+                        }
+
+
+                        if (
+
+                            segmentMap[key]
+                                .origins[
+                                    migration.origin
+                                ] ===
+                            undefined
+
+                        ) {
+
+                            segmentMap[key]
+                                .origins[
+                                    migration.origin
+                                ] = 0;
+
+                        }
+
+
+                        segmentMap[key]
+                            .origins[
+                                migration.origin
+                            ] +=
+                            routeShare;
+
+                    }
+
+                }
+            );
+
+        }
+    );
 
 
     segments =
@@ -1077,18 +1714,30 @@ function calculateSegments() {
 
 
     console.log(
-        "Рассчитанные сегменты:",
+        "===================================="
+    );
+
+
+    console.log(
+        "РАССЧИТАННЫЕ СЕГМЕНТЫ:",
         segments
+    );
+
+
+    console.log(
+        "===================================="
     );
 
 }
 
 
 // ============================================================
-// ТОЛЩИНА
+// 25. ТОЛЩИНА ПОТОКА
 // ============================================================
 
-function getFlowWidth(value) {
+function getFlowWidth(
+    value
+) {
 
     if (
         value <= 0
@@ -1100,22 +1749,27 @@ function getFlowWidth(value) {
 
 
     const width =
+
         MIN_FLOW_WIDTH +
+
         Math.log10(
             value
         ) * 3;
 
 
     return Math.min(
+
         width,
+
         MAX_FLOW_WIDTH
+
     );
 
 }
 
 
 // ============================================================
-// ПЛАВНАЯ ЛИНИЯ
+// 26. ПЛАВНАЯ ЛИНИЯ
 // ============================================================
 
 function createSmoothPath(
@@ -1123,27 +1777,44 @@ function createSmoothPath(
     to
 ) {
 
-    const lat1 = from[0];
-    const lon1 = from[1];
+    const lat1 =
+        from[0];
 
-    const lat2 = to[0];
-    const lon2 = to[1];
+    const lon1 =
+        from[1];
+
+
+    const lat2 =
+        to[0];
+
+    const lon2 =
+        to[1];
 
 
     const midLat =
-        (lat1 + lat2) / 2;
+
+        (lat1 + lat2) /
+
+        2;
+
 
     const midLon =
-        (lon1 + lon2) / 2;
+
+        (lon1 + lon2) /
+
+        2;
 
 
     const distance =
+
         Math.sqrt(
 
             Math.pow(
                 lat2 - lat1,
                 2
-            ) +
+            )
+
+            +
 
             Math.pow(
                 lon2 - lon1,
@@ -1168,7 +1839,7 @@ function createSmoothPath(
     const points = [];
 
 
-    const steps = 12;
+    const steps = 15;
 
 
     for (
@@ -1186,20 +1857,35 @@ function createSmoothPath(
 
 
         const lat =
+
             mt * mt * lat1 +
-            2 * mt * t * controlLat +
+
+            2 *
+                mt *
+                t *
+                controlLat +
+
             t * t * lat2;
 
 
         const lon =
+
             mt * mt * lon1 +
-            2 * mt * t * controlLon +
+
+            2 *
+                mt *
+                t *
+                controlLon +
+
             t * t * lon2;
 
 
         points.push([
+
             lat,
+
             lon
+
         ]);
 
     }
@@ -1211,7 +1897,7 @@ function createSmoothPath(
 
 
 // ============================================================
-// РИСУЕМ ПОТОКИ
+// 27. РИСУЕМ ПОТОКИ
 // ============================================================
 
 function drawFlows() {
@@ -1219,126 +1905,156 @@ function drawFlows() {
     flowsLayer.clearLayers();
 
 
-    segments.forEach(segment => {
+    segments.forEach(
+        segment => {
 
-        const from =
-            getPoint(
-                segment.from
-            );
-
-
-        const to =
-            getPoint(
-                segment.to
-            );
+            const from =
+                getPoint(
+                    segment.from
+                );
 
 
-        if (
-            !from ||
-            !to
-        ) {
-
-            console.warn(
-                "Нет координат:",
-                segment.from,
-                segment.to
-            );
-
-            return;
-
-        }
+            const to =
+                getPoint(
+                    segment.to
+                );
 
 
-        const points =
-            createSmoothPath(
-                from,
-                to
-            );
+            if (
+                !from ||
+                !to
+            ) {
+
+                console.warn(
+
+                    "Невозможно нарисовать:",
+
+                    segment.from,
+
+                    "→",
+
+                    segment.to,
+
+                    "Нет координат"
+
+                );
 
 
-        const line =
-            L.polyline(
+                return;
 
-                points,
+            }
+
+
+            const points =
+
+                createSmoothPath(
+
+                    from,
+
+                    to
+
+                );
+
+
+            const line =
+
+                L.polyline(
+
+                    points,
+
+                    {
+
+                        color:
+                            FLOW_COLOR,
+
+                        weight:
+
+                            getFlowWidth(
+                                segment.value
+                            ),
+
+                        opacity:
+                            FLOW_OPACITY,
+
+                        lineCap:
+                            "round",
+
+                        lineJoin:
+                            "round",
+
+                        smoothFactor:
+                            1
+
+                    }
+
+                );
+
+
+            line.bindTooltip(
+
+                `
+
+                <b>
+
+                    ${escapeHTML(
+                        segment.from
+                    )}
+
+                    →
+
+                    ${escapeHTML(
+                        segment.to
+                    )}
+
+                </b>
+
+                <br>
+
+                ${formatNumber(
+                    segment.value
+                )}
+
+                переселенцев
+
+                `,
 
                 {
 
-                    color:
-                        FLOW_COLOR,
-
-                    weight:
-                        getFlowWidth(
-                            segment.value
-                        ),
-
-                    opacity:
-                        FLOW_OPACITY,
-
-                    lineCap:
-                        "round",
-
-                    lineJoin:
-                        "round",
-
-                    smoothFactor:
-                        1
+                    sticky:
+                        true
 
                 }
 
             );
 
 
-        line.bindTooltip(
+            line.on(
 
-            `
-            <b>
-                ${escapeHTML(
-                    segment.from
-                )}
-                →
-                ${escapeHTML(
-                    segment.to
-                )}
-            </b>
+                "click",
 
-            <br>
+                () => {
 
-            ${formatNumber(
-                segment.value
-            )}
-            переселенцев
-            `,
+                    showSegmentInfo(
+                        segment
+                    );
 
-            {
-                sticky: true
-            }
+                }
 
-        );
+            );
 
 
-        line.on(
-            "click",
-            () => {
+            line.addTo(
+                flowsLayer
+            );
 
-                showSegmentInfo(
-                    segment
-                );
-
-            }
-        );
-
-
-        line.addTo(
-            flowsLayer
-        );
-
-    });
+        }
+    );
 
 }
 
 
 // ============================================================
-// ИНФОРМАЦИЯ О СЕГМЕНТЕ
+// 28. ИНФОРМАЦИЯ О ПОТОКЕ
 // ============================================================
 
 function showSegmentInfo(
@@ -1346,12 +2062,16 @@ function showSegmentInfo(
 ) {
 
     const origins =
+
         Object.entries(
             segment.origins
         )
+
         .sort(
+
             (a, b) =>
                 b[1] - a[1]
+
         );
 
 
@@ -1359,19 +2079,36 @@ function showSegmentInfo(
 
 
     origins.forEach(
-        ([origin, value]) => {
+
+        ([
+
+            origin,
+
+            value
+
+        ]) => {
+
 
             html += `
 
                 <div>
-                    ${escapeHTML(origin)}
+
+                    ${escapeHTML(
+                        origin
+                    )}
+
                     —
-                    ${formatNumber(value)}
+
+                    ${formatNumber(
+                        value
+                    )}
+
                 </div>
 
             `;
 
         }
+
     );
 
 
@@ -1395,14 +2132,18 @@ function showSegmentInfo(
             ${escapeHTML(
                 segment.from
             )}
+
             →
+
             ${escapeHTML(
                 segment.to
             )}
 
         </strong>
 
+
         <br><br>
+
 
         Всего:
 
@@ -1416,11 +2157,16 @@ function showSegmentInfo(
 
         переселенцев
 
+
         <hr>
 
+
         <b>
+
             Состав потока:
+
         </b>
+
 
         ${html}
 
@@ -1430,7 +2176,7 @@ function showSegmentInfo(
 
 
 // ============================================================
-// ИНФОРМАЦИЯ О ГУБЕРНИИ
+// 29. ИНФОРМАЦИЯ О РЕГИОНЕ
 // ============================================================
 
 function showRegionInfo(
@@ -1438,24 +2184,38 @@ function showRegionInfo(
 ) {
 
     const outgoing =
+
         migrations.filter(
+
             migration =>
+
                 migration.origin ===
                 regionName
+
         );
 
 
     const total =
+
         outgoing.reduce(
-            (sum, migration) =>
+
+            (
+                sum,
+
+                migration
+
+            ) =>
+
                 sum +
                 migration.number,
 
             0
+
         );
 
 
     const info =
+
         document.getElementById(
             "info"
         );
@@ -1478,9 +2238,12 @@ function showRegionInfo(
 
         </strong>
 
+
         <br><br>
 
+
         Исходящий поток:
+
 
         <strong>
 
@@ -1490,6 +2253,7 @@ function showRegionInfo(
 
         </strong>
 
+
         переселенцев
 
     `;
@@ -1498,60 +2262,74 @@ function showRegionInfo(
 
 
 // ============================================================
-// ФОРМАТ ЧИСЕЛ
+// 30. ФОРМАТ ЧИСЕЛ
 // ============================================================
 
-function formatNumber(number) {
+function formatNumber(
+    number
+) {
 
-    return Number(number)
-        .toLocaleString(
-            "ru-RU",
-            {
-                maximumFractionDigits: 0
-            }
-        );
+    return Number(
+        number
+    )
+    .toLocaleString(
+
+        "ru-RU",
+
+        {
+
+            maximumFractionDigits:
+                0
+
+        }
+
+    );
 
 }
 
 
 // ============================================================
-// ЭКРАНИРОВАНИЕ HTML
+// 31. ЗАЩИТА HTML
 // ============================================================
 
-function escapeHTML(text) {
+function escapeHTML(
+    text
+) {
 
-    return String(text)
+    return String(
+        text
+    )
 
-        .replace(
-            /&/g,
-            "&amp;"
-        )
+    .replace(
+        /&/g,
+        "&amp;"
+    )
 
-        .replace(
-            /</g,
-            "&lt;"
-        )
+    .replace(
+        /</g,
+        "&lt;"
+    )
 
-        .replace(
-            />/g,
-            "&gt;"
-        )
+    .replace(
+        />/g,
+        "&gt;"
+    )
 
-        .replace(
-            /"/g,
-            "&quot;"
-        )
+    .replace(
+        /"/g,
+        "&quot;"
+    )
 
-        .replace(
-            /'/g,
-            "&#039;"
-        );
+    .replace(
+        /'/g,
+        "&#039;"
+    );
 
 }
 
 
 // ============================================================
-// МАСШТАБ КАРТЫ
+// 32. МАСШТАБ КАРТЫ
 // ============================================================
 
 function fitMapToRegions() {
@@ -1562,27 +2340,31 @@ function fitMapToRegions() {
     Object.values(
         regions
     )
-    .forEach(region => {
+    .forEach(
+        region => {
 
-        try {
+            try {
 
-            layers.push(
-                L.geoJSON(
-                    region.feature
-                )
-            );
+                layers.push(
+
+                    L.geoJSON(
+                        region.feature
+                    )
+
+                );
+
+            }
+
+            catch (error) {
+
+                console.warn(
+                    error
+                );
+
+            }
 
         }
-
-        catch (error) {
-
-            console.warn(
-                error
-            );
-
-        }
-
-    });
+    );
 
 
     if (
@@ -1595,26 +2377,46 @@ function fitMapToRegions() {
 
 
     const group =
+
         L.featureGroup(
             layers
         );
 
 
     map.fitBounds(
+
         group.getBounds(),
+
         {
-            padding: [30, 30]
+
+            padding:
+                [30, 30]
+
         }
+
     );
 
 }
 
 
 // ============================================================
-// ДИАГНОСТИКА
+// 33. ПРОВЕРКА МАРШРУТОВ
 // ============================================================
 
-setTimeout(() => {
+function checkRoutes() {
+
+    console.log(
+        "===================================="
+    );
+
+    console.log(
+        "ПРОВЕРКА МАРШРУТОВ"
+    );
+
+    console.log(
+        "===================================="
+    );
+
 
     migrations.forEach(
         migration => {
@@ -1630,8 +2432,47 @@ setTimeout(() => {
             ) {
 
                 console.warn(
-                    "⚠ Не найден путь:",
+
+                    "❌ НЕТ МАРШРУТА:",
+
                     migration.origin
+
+                );
+
+            }
+
+            else {
+
+                console.log(
+
+                    "✓",
+
+                    migration.origin,
+
+                    "→",
+
+                    paths.length,
+
+                    "маршрут(ов)"
+
+                );
+
+
+                paths.forEach(
+                    path => {
+
+                        console.log(
+
+                            "   ",
+
+                            path.join(
+                                " → "
+                            )
+
+                        );
+
+                    }
+
                 );
 
             }
@@ -1640,4 +2481,8 @@ setTimeout(() => {
     );
 
 
-}, 1000);
+    console.log(
+        "===================================="
+    );
+
+}
