@@ -2822,39 +2822,44 @@ function escapeHTML(
 
 }
 // ============================================================
-// 41. АНИМАЦИЯ ПОТОКОВ
+// 41. АНИМАЦИЯ ПОТОКОВ — ДВИЖУЩИЕСЯ ШТРИХИ
 // ============================================================
 
 let animationRunning = false;
-
 let animationFrame = null;
 
-let animationParticles = [];
-
-let animationStartTime = 0;
+let animationStrokes = [];
 
 
 // ============================================================
-// НАСТРОЙКИ АНИМАЦИИ
+// НАСТРОЙКИ
 // ============================================================
 
 const ANIMATION_SETTINGS = {
 
-    // Количество движущихся точек
-    particlesPerSegment: 3,
+    // Базовая скорость
+    speed: 0.00016,
 
-    // Скорость движения
-    // Чем больше — тем быстрее
-    speed: 0.00012,
+    // Длина штриха в долях сегмента
+    strokeLength: 0.055,
 
-    // Размер точки
-    radius: 3,
+    // Минимальное количество штрихов
+    minStrokes: 1,
+
+    // Максимальное количество штрихов
+    maxStrokes: 8,
+
+    // Толщина штриха
+    width: 4,
 
     // Прозрачность
-    opacity: 0.9,
+    opacity: 0.95,
 
-    // Цвет
-    color: "#ffcc00"
+    // Цвет штрихов
+    color: "#ffffff",
+
+    // Шаг обновления
+    frameInterval: 16
 
 };
 
@@ -2868,26 +2873,17 @@ function startFlowAnimation() {
     if (
         animationRunning
     ) {
-
         return;
-
     }
-
 
     animationRunning = true;
 
-    animationStartTime =
-        performance.now();
-
-
-    createAnimationParticles();
-
+    createAnimationStrokes();
 
     animationFrame =
         requestAnimationFrame(
-            animateFlows
+            animateFlowStrokes
         );
-
 
     updateAnimationButton();
 
@@ -2902,7 +2898,6 @@ function stopFlowAnimation() {
 
     animationRunning = false;
 
-
     if (
         animationFrame
     ) {
@@ -2915,9 +2910,7 @@ function stopFlowAnimation() {
 
     }
 
-
-    clearAnimationParticles();
-
+    clearAnimationStrokes();
 
     updateAnimationButton();
 
@@ -2925,12 +2918,12 @@ function stopFlowAnimation() {
 
 
 // ============================================================
-// СОЗДАНИЕ ТОЧЕК
+// СОЗДАНИЕ ШТРИХОВ
 // ============================================================
 
-function createAnimationParticles() {
+function createAnimationStrokes() {
 
-    clearAnimationParticles();
+    clearAnimationStrokes();
 
 
     segments.forEach(
@@ -2940,7 +2933,6 @@ function createAnimationParticles() {
                 getPoint(
                     segment.from
                 );
-
 
             const to =
                 getPoint(
@@ -2965,15 +2957,23 @@ function createAnimationParticles() {
                 );
 
 
+            // ----------------------------------------------
+            // Количество штрихов зависит от потока
+            // ----------------------------------------------
+
+            const strokesCount =
+                getStrokeCount(
+                    segment.value
+                );
+
+
             for (
                 let i = 0;
-                i <
-                ANIMATION_SETTINGS
-                    .particlesPerSegment;
+                i < strokesCount;
                 i++
             ) {
 
-                const particle = {
+                const stroke = {
 
                     segment:
                         segment,
@@ -2983,16 +2983,11 @@ function createAnimationParticles() {
 
                     progress:
                         i /
-                        ANIMATION_SETTINGS
-                            .particlesPerSegment,
+                        strokesCount,
 
                     speed:
-                        ANIMATION_SETTINGS
-                            .speed *
-                        (
-                            0.7 +
-                            Math.random() *
-                            0.6
+                        getStrokeSpeed(
+                            segment.value
                         ),
 
                     marker:
@@ -3001,51 +2996,46 @@ function createAnimationParticles() {
                 };
 
 
-                particle.marker =
-                    L.circleMarker(
-
-                        points[0],
-
+                stroke.marker =
+                    L.polyline(
+                        [
+                            points[0],
+                            points[0]
+                        ],
                         {
-
-                            radius:
-                                ANIMATION_SETTINGS
-                                    .radius,
 
                             color:
                                 ANIMATION_SETTINGS
                                     .color,
 
-                            fillColor:
+                            weight:
                                 ANIMATION_SETTINGS
-                                    .color,
-
-                            fillOpacity:
-                                ANIMATION_SETTINGS
-                                    .opacity,
+                                    .width,
 
                             opacity:
                                 ANIMATION_SETTINGS
                                     .opacity,
 
-                            weight:
-                                0,
+                            lineCap:
+                                "round",
+
+                            lineJoin:
+                                "round",
 
                             interactive:
                                 false
 
                         }
-
                     );
 
 
-                particle.marker.addTo(
+                stroke.marker.addTo(
                     flowsLayer
                 );
 
 
-                animationParticles.push(
-                    particle
+                animationStrokes.push(
+                    stroke
                 );
 
             }
@@ -3057,20 +3047,99 @@ function createAnimationParticles() {
 
 
 // ============================================================
-// ОЧИСТКА ТОЧЕК
+// КОЛИЧЕСТВО ШТРИХОВ
 // ============================================================
 
-function clearAnimationParticles() {
+function getStrokeCount(
+    value
+) {
 
-    animationParticles.forEach(
-        particle => {
+    if (
+        value <= 0
+    ) {
+
+        return 1;
+
+    }
+
+
+    const count =
+        Math.round(
+            Math.log10(
+                value + 1
+            )
+        );
+
+
+    return Math.max(
+
+        ANIMATION_SETTINGS.minStrokes,
+
+        Math.min(
+
+            ANIMATION_SETTINGS.maxStrokes,
+
+            count
+
+        )
+
+    );
+
+}
+
+
+// ============================================================
+// СКОРОСТЬ
+// ============================================================
+
+function getStrokeSpeed(
+    value
+) {
+
+    // Небольшие потоки движутся медленнее,
+    // крупные — немного быстрее.
+
+    const multiplier =
+
+        0.75 +
+
+        Math.min(
+
+            1.5,
+
+            Math.log10(
+                value + 1
+            ) / 5
+
+        );
+
+
+    return (
+
+        ANIMATION_SETTINGS.speed *
+
+        multiplier
+
+    );
+
+}
+
+
+// ============================================================
+// ОЧИСТКА
+// ============================================================
+
+function clearAnimationStrokes() {
+
+    animationStrokes.forEach(
+        stroke => {
 
             if (
-                particle.marker
+                stroke.marker
             ) {
 
                 flowsLayer.removeLayer(
-                    particle.marker
+                    stroke.marker
                 );
 
             }
@@ -3079,7 +3148,7 @@ function clearAnimationParticles() {
     );
 
 
-    animationParticles = [];
+    animationStrokes = [];
 
 }
 
@@ -3088,7 +3157,7 @@ function clearAnimationParticles() {
 // АНИМАЦИЯ
 // ============================================================
 
-function animateFlows(
+function animateFlowStrokes(
     timestamp
 ) {
 
@@ -3101,55 +3170,80 @@ function animateFlows(
     }
 
 
-    animationParticles.forEach(
-        particle => {
+    animationStrokes.forEach(
+        stroke => {
 
-            // -----------------------------------------------
-            // Двигаем частицу
-            // -----------------------------------------------
+            // --------------------------------------------
+            // Движение
+            // --------------------------------------------
 
-            particle.progress +=
-                particle.speed *
+            stroke.progress +=
+                stroke.speed *
                 16;
 
 
-            // -----------------------------------------------
-            // Начинаем сначала
-            // -----------------------------------------------
+            // --------------------------------------------
+            // Повтор с начала
+            // --------------------------------------------
 
             if (
-                particle.progress >= 1
+                stroke.progress >= 1
             ) {
 
-                particle.progress -= 1;
+                stroke.progress -= 1;
 
             }
 
 
-            // -----------------------------------------------
-            // Координата частицы
-            // -----------------------------------------------
+            // --------------------------------------------
+            // Начало штриха
+            // --------------------------------------------
 
-            const position =
+            let startProgress =
+                stroke.progress -
+                ANIMATION_SETTINGS
+                    .strokeLength;
+
+
+            if (
+                startProgress < 0
+            ) {
+
+                startProgress += 1;
+
+            }
+
+
+            const start =
                 getPositionOnPath(
+                    stroke.points,
+                    startProgress
+                );
 
-                    particle.points,
 
-                    particle.progress
-
+            const end =
+                getPositionOnPath(
+                    stroke.points,
+                    stroke.progress
                 );
 
 
             if (
-                position
+                !start ||
+                !end
             ) {
 
-                particle.marker
-                    .setLatLng(
-                        position
-                    );
+                return;
 
             }
+
+
+            stroke.marker.setLatLngs(
+                [
+                    start,
+                    end
+                ]
+            );
 
         }
     );
@@ -3157,14 +3251,14 @@ function animateFlows(
 
     animationFrame =
         requestAnimationFrame(
-            animateFlows
+            animateFlowStrokes
         );
 
 }
 
 
 // ============================================================
-// ПОЛОЖЕНИЕ НА ЛИНИИ
+// ПОЗИЦИЯ НА КРИВОЙ
 // ============================================================
 
 function getPositionOnPath(
@@ -3189,6 +3283,18 @@ function getPositionOnPath(
         return points[0];
 
     }
+
+
+    // Защита от отрицательного значения
+
+    progress =
+        Math.max(
+            0,
+            Math.min(
+                1,
+                progress
+            )
+        );
 
 
     const position =
@@ -3299,7 +3405,7 @@ function updateAnimationButton() {
 
 
 // ============================================================
-// ОБРАБОТЧИК КНОПКИ
+// ОБРАБОТЧИК
 // ============================================================
 
 document.addEventListener(
