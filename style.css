@@ -95,3 +95,24 @@ body {
 .legend-line.large {
     border-top-width: 12px;
 }
+#animationControls {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+}
+
+#animationToggle {
+    border: none;
+    border-radius: 6px;
+    padding: 10px 16px;
+    background: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+#animationToggle:hover {
+    background: #f3f3f3;
+}
