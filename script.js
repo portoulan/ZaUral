@@ -2821,3 +2821,533 @@ function escapeHTML(
         );
 
 }
+// ============================================================
+// 41. АНИМАЦИЯ ПОТОКОВ
+// ============================================================
+
+let animationRunning = false;
+
+let animationFrame = null;
+
+let animationParticles = [];
+
+let animationStartTime = 0;
+
+
+// ============================================================
+// НАСТРОЙКИ АНИМАЦИИ
+// ============================================================
+
+const ANIMATION_SETTINGS = {
+
+    // Количество движущихся точек
+    particlesPerSegment: 3,
+
+    // Скорость движения
+    // Чем больше — тем быстрее
+    speed: 0.00012,
+
+    // Размер точки
+    radius: 3,
+
+    // Прозрачность
+    opacity: 0.9,
+
+    // Цвет
+    color: "#ffcc00"
+
+};
+
+
+// ============================================================
+// ЗАПУСК
+// ============================================================
+
+function startFlowAnimation() {
+
+    if (
+        animationRunning
+    ) {
+
+        return;
+
+    }
+
+
+    animationRunning = true;
+
+    animationStartTime =
+        performance.now();
+
+
+    createAnimationParticles();
+
+
+    animationFrame =
+        requestAnimationFrame(
+            animateFlows
+        );
+
+
+    updateAnimationButton();
+
+}
+
+
+// ============================================================
+// ОСТАНОВКА
+// ============================================================
+
+function stopFlowAnimation() {
+
+    animationRunning = false;
+
+
+    if (
+        animationFrame
+    ) {
+
+        cancelAnimationFrame(
+            animationFrame
+        );
+
+        animationFrame = null;
+
+    }
+
+
+    clearAnimationParticles();
+
+
+    updateAnimationButton();
+
+}
+
+
+// ============================================================
+// СОЗДАНИЕ ТОЧЕК
+// ============================================================
+
+function createAnimationParticles() {
+
+    clearAnimationParticles();
+
+
+    segments.forEach(
+        segment => {
+
+            const from =
+                getPoint(
+                    segment.from
+                );
+
+
+            const to =
+                getPoint(
+                    segment.to
+                );
+
+
+            if (
+                !from ||
+                !to
+            ) {
+
+                return;
+
+            }
+
+
+            const points =
+                createSmoothPath(
+                    from,
+                    to
+                );
+
+
+            for (
+                let i = 0;
+                i <
+                ANIMATION_SETTINGS
+                    .particlesPerSegment;
+                i++
+            ) {
+
+                const particle = {
+
+                    segment:
+                        segment,
+
+                    points:
+                        points,
+
+                    progress:
+                        i /
+                        ANIMATION_SETTINGS
+                            .particlesPerSegment,
+
+                    speed:
+                        ANIMATION_SETTINGS
+                            .speed *
+                        (
+                            0.7 +
+                            Math.random() *
+                            0.6
+                        ),
+
+                    marker:
+                        null
+
+                };
+
+
+                particle.marker =
+                    L.circleMarker(
+
+                        points[0],
+
+                        {
+
+                            radius:
+                                ANIMATION_SETTINGS
+                                    .radius,
+
+                            color:
+                                ANIMATION_SETTINGS
+                                    .color,
+
+                            fillColor:
+                                ANIMATION_SETTINGS
+                                    .color,
+
+                            fillOpacity:
+                                ANIMATION_SETTINGS
+                                    .opacity,
+
+                            opacity:
+                                ANIMATION_SETTINGS
+                                    .opacity,
+
+                            weight:
+                                0,
+
+                            interactive:
+                                false
+
+                        }
+
+                    );
+
+
+                particle.marker.addTo(
+                    flowsLayer
+                );
+
+
+                animationParticles.push(
+                    particle
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// ОЧИСТКА ТОЧЕК
+// ============================================================
+
+function clearAnimationParticles() {
+
+    animationParticles.forEach(
+        particle => {
+
+            if (
+                particle.marker
+            ) {
+
+                flowsLayer.removeLayer(
+                    particle.marker
+                );
+
+            }
+
+        }
+    );
+
+
+    animationParticles = [];
+
+}
+
+
+// ============================================================
+// АНИМАЦИЯ
+// ============================================================
+
+function animateFlows(
+    timestamp
+) {
+
+    if (
+        !animationRunning
+    ) {
+
+        return;
+
+    }
+
+
+    animationParticles.forEach(
+        particle => {
+
+            // -----------------------------------------------
+            // Двигаем частицу
+            // -----------------------------------------------
+
+            particle.progress +=
+                particle.speed *
+                16;
+
+
+            // -----------------------------------------------
+            // Начинаем сначала
+            // -----------------------------------------------
+
+            if (
+                particle.progress >= 1
+            ) {
+
+                particle.progress -= 1;
+
+            }
+
+
+            // -----------------------------------------------
+            // Координата частицы
+            // -----------------------------------------------
+
+            const position =
+                getPositionOnPath(
+
+                    particle.points,
+
+                    particle.progress
+
+                );
+
+
+            if (
+                position
+            ) {
+
+                particle.marker
+                    .setLatLng(
+                        position
+                    );
+
+            }
+
+        }
+    );
+
+
+    animationFrame =
+        requestAnimationFrame(
+            animateFlows
+        );
+
+}
+
+
+// ============================================================
+// ПОЛОЖЕНИЕ НА ЛИНИИ
+// ============================================================
+
+function getPositionOnPath(
+    points,
+    progress
+) {
+
+    if (
+        !points ||
+        points.length === 0
+    ) {
+
+        return null;
+
+    }
+
+
+    if (
+        points.length === 1
+    ) {
+
+        return points[0];
+
+    }
+
+
+    const position =
+
+        progress *
+        (
+            points.length - 1
+        );
+
+
+    const index =
+        Math.floor(
+            position
+        );
+
+
+    const localProgress =
+        position -
+        index;
+
+
+    const p1 =
+        points[
+            Math.min(
+                index,
+                points.length - 1
+            )
+        ];
+
+
+    const p2 =
+        points[
+            Math.min(
+                index + 1,
+                points.length - 1
+            )
+        ];
+
+
+    const lat =
+
+        p1[0] +
+
+        (
+            p2[0] -
+            p1[0]
+        ) *
+        localProgress;
+
+
+    const lon =
+
+        p1[1] +
+
+        (
+            p2[1] -
+            p1[1]
+        ) *
+        localProgress;
+
+
+    return [
+        lat,
+        lon
+    ];
+
+}
+
+
+// ============================================================
+// КНОПКА
+// ============================================================
+
+function updateAnimationButton() {
+
+    const button =
+        document.getElementById(
+            "animationToggle"
+        );
+
+
+    if (
+        !button
+    ) {
+
+        return;
+
+    }
+
+
+    if (
+        animationRunning
+    ) {
+
+        button.innerHTML =
+            "⏸ Остановить потоки";
+
+    }
+
+    else {
+
+        button.innerHTML =
+            "▶ Запустить потоки";
+
+    }
+
+}
+
+
+// ============================================================
+// ОБРАБОТЧИК КНОПКИ
+// ============================================================
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+
+        const button =
+            document.getElementById(
+                "animationToggle"
+            );
+
+
+        if (
+            !button
+        ) {
+
+            console.warn(
+                "Кнопка animationToggle не найдена"
+            );
+
+            return;
+
+        }
+
+
+        button.addEventListener(
+            "click",
+            () => {
+
+                if (
+                    animationRunning
+                ) {
+
+                    stopFlowAnimation();
+
+                }
+
+                else {
+
+                    startFlowAnimation();
+
+                }
+
+            }
+        );
+
+
+        updateAnimationButton();
+
+    }
+);
