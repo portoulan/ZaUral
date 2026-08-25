@@ -12,6 +12,83 @@ body {
     height: 100%;
 }
 
+#topControls {
+    position: absolute;
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+
+    background: rgba(255, 255, 255, 0.95);
+    padding: 10px 12px;
+
+    border-radius: 10px;
+
+    box-shadow:
+        0 2px 12px rgba(0, 0, 0, 0.2);
+
+    max-width: calc(100% - 30px);
+
+    text-align: center;
+}
+
+#yearTitle {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+#yearControls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+
+    max-width: 900px;
+}
+
+.yearButton {
+    border: 1px solid #ccc;
+    background: white;
+
+    padding: 5px 8px;
+
+    border-radius: 4px;
+
+    cursor: pointer;
+
+    font-size: 13px;
+}
+
+.yearButton:hover {
+    background: #f0f0f0;
+}
+
+.yearButton.active {
+    background: #c62828;
+    color: white;
+
+    border-color: #c62828;
+
+    font-weight: 700;
+}
+
+#animationToggle {
+    margin-top: 8px;
+
+    border: none;
+
+    background: #333;
+    color: white;
+
+    padding: 7px 14px;
+
+    border-radius: 5px;
+
+    cursor: pointer;
+}
+
+
 #panel {
     position: absolute;
     top: 20px;
