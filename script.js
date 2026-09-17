@@ -10,10 +10,10 @@
    data/migration_to.csv
    Destinatoin;EDGE;year_1896;...;year_1916
 
-   data/NODES
+   data/NODES.csv
    id;lat;lon
 
-   data/EDGES
+   data/EDGES.csv
    from;to;to;to;...
 
    data/data.geojson
@@ -82,28 +82,37 @@ const SETTINGS = {
     curveFactor: 0.035,
     curveSteps: 12,
 
-    /* Анимация */
-    animationSpeed: 0.0018,
-    strokeLength: 0.055,
+    /* --------------------------------------------------------
+       АНИМАЦИЯ leaflet-ant-path
+       -------------------------------------------------------- */
 
-    minStrokes: 1,
-    maxStrokes: 8,
+    antPathDelay: 75,
 
-    animationWidth: 3,
+    antPathDashArray: [10, 22],
+
+    antPathPulseColor: "#ffffff",
+
+    antPathHardwareAccelerated: true,
+
     animationOpacity: 0.95,
 
     /* Регионы */
     regionBorderColor: "#777",
+
     regionFillColor: "#eeeeee",
+
     regionFillOpacity: 0.18,
 
     selectedSourceColor: "#d32f2f",
+
     selectedDestinationColor: "#1565c0",
 
     selectedSourceOpacity: 0.45,
+
     selectedDestinationOpacity: 0.40,
 
     initialCenter: [55, 70],
+
     initialZoom: 4
 
 };
@@ -120,7 +129,9 @@ for (
     year <= SETTINGS.endYear;
     year++
 ) {
+
     YEARS.push(year);
+
 }
 
 let currentYear = SETTINGS.startYear;
@@ -131,21 +142,27 @@ let currentYear = SETTINGS.startYear;
    ============================================================ */
 
 let migrationFrom = [];
+
 let migrationTo = [];
 
 let nodes = {};
+
 let graph = {};
+
 let reverseGraph = {};
 
 let regions = {};
+
 let geojsonData = null;
 
 let destinationByEdge = {};
+
 let sourceByEdge = {};
 
 let routeCache = {};
 
 let outgoingSegments = [];
+
 let incomingSegments = [];
 
 
@@ -153,14 +170,20 @@ let incomingSegments = [];
    5. СОСТОЯНИЕ
    ============================================================ */
 
-let animationRunning = false;
-let animationFrame = null;
-let animationStrokes = [];
+let animationRunning = true;
+
+/*
+   Вместо старого requestAnimationFrame
+   используем leaflet-ant-path.
+*/
+let antPaths = [];
 
 let selectedRegion = null;
+
 let selectedRegionRole = null;
 
 let selectedSourceNames = new Set();
+
 let selectedDestinationNames = new Set();
 
 let regionLayers = {};
@@ -226,8 +249,10 @@ map.on(
 const regionsLayer =
     L.layerGroup().addTo(map);
 
+
 const flowsLayer =
     L.layerGroup().addTo(map);
+
 
 const animationLayer =
     L.layerGroup().addTo(map);
@@ -274,17 +299,27 @@ function injectStyles() {
     style.textContent = `
 
         #migration-controls {
+
             position: fixed;
+
             left: 50%;
+
             bottom: 15px;
+
             transform: translateX(-50%);
+
             z-index: 2000;
 
-            width: min(1100px, calc(100vw - 30px));
+            width: min(
+                1100px,
+                calc(100vw - 30px)
+            );
 
-            background: rgba(255,255,255,0.96);
+            background:
+                rgba(255,255,255,0.96);
 
-            padding: 10px 14px;
+            padding:
+                10px 14px;
 
             border-radius: 12px;
 
@@ -294,124 +329,252 @@ function injectStyles() {
             font-family:
                 Arial, sans-serif;
 
-            box-sizing: border-box;
+            box-sizing:
+                border-box;
+
         }
+
 
         .migration-toolbar {
+
             display: flex;
+
             align-items: center;
+
             justify-content: center;
+
             gap: 6px;
+
             flex-wrap: wrap;
+
         }
+
 
         .migration-toolbar button {
-            border: 1px solid #ccc;
-            background: #fff;
-            border-radius: 6px;
-            padding: 6px 10px;
-            cursor: pointer;
-            font-size: 13px;
+
+            border:
+                1px solid #ccc;
+
+            background:
+                #fff;
+
+            border-radius:
+                6px;
+
+            padding:
+                6px 10px;
+
+            cursor:
+                pointer;
+
+            font-size:
+                13px;
+
         }
+
 
         .migration-toolbar button:hover {
-            background: #f1f1f1;
+
+            background:
+                #f1f1f1;
+
         }
+
 
         #yearButtons {
+
             display: flex;
+
             flex-wrap: wrap;
+
             justify-content: center;
+
             gap: 3px;
+
         }
+
 
         .yearButton {
-            min-width: 40px;
-            padding: 5px 6px !important;
-            font-size: 11px !important;
+
+            min-width:
+                40px;
+
+            padding:
+                5px 6px !important;
+
+            font-size:
+                11px !important;
+
         }
+
 
         .yearButton.active {
-            background: #333 !important;
-            color: #fff !important;
-            border-color: #333 !important;
+
+            background:
+                #333 !important;
+
+            color:
+                #fff !important;
+
+            border-color:
+                #333 !important;
+
         }
+
 
         .year-slider-container {
+
             display: flex;
+
             align-items: center;
+
             gap: 8px;
+
             margin-top: 8px;
+
         }
+
 
         #yearSlider {
+
             flex: 1;
+
             cursor: pointer;
+
         }
+
 
         #yearLabel {
-            min-width: 45px;
-            text-align: center;
-            font-size: 16px;
+
+            min-width:
+                45px;
+
+            text-align:
+                center;
+
+            font-size:
+                16px;
+
         }
+
 
         .tables-container {
+
             display: flex;
+
             gap: 20px;
+
             margin-top: 12px;
+
             padding-top: 10px;
 
-            border-top: 1px solid #ddd;
+            border-top:
+                1px solid #ddd;
 
-            max-height: 45vh;
-            overflow: auto;
+            max-height:
+                45vh;
+
+            overflow:
+                auto;
+
         }
+
 
         .table-column {
+
             flex: 1;
-            min-width: 300px;
+
+            min-width:
+                300px;
+
         }
+
 
         .table-column h3 {
-            margin: 0 0 7px;
-            font-size: 14px;
+
+            margin:
+                0 0 7px;
+
+            font-size:
+                14px;
+
         }
 
+
         .migration-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 11px;
+
+            width:
+                100%;
+
+            border-collapse:
+                collapse;
+
+            font-size:
+                11px;
+
         }
+
 
         .migration-table th,
         .migration-table td {
-            border: 1px solid #ddd;
-            padding: 4px 6px;
+
+            border:
+                1px solid #ddd;
+
+            padding:
+                4px 6px;
+
         }
 
+
         .migration-table th {
-            position: sticky;
-            top: 0;
-            background: #eee;
-            text-align: left;
+
+            position:
+                sticky;
+
+            top:
+                0;
+
+            background:
+                #eee;
+
+            text-align:
+                left;
+
         }
+
 
         .migration-table th:last-child,
         .migration-table td:last-child {
-            text-align: right;
+
+            text-align:
+                right;
+
         }
 
+
         .flowLegend {
-            position: fixed;
-            top: 12px;
-            right: 12px;
-            z-index: 1900;
 
-            background: rgba(255,255,255,0.95);
+            position:
+                fixed;
 
-            padding: 10px 12px;
+            top:
+                12px;
 
-            border-radius: 8px;
+            right:
+                12px;
+
+            z-index:
+                1900;
+
+            background:
+                rgba(255,255,255,0.95);
+
+            padding:
+                10px 12px;
+
+            border-radius:
+                8px;
 
             box-shadow:
                 0 2px 10px rgba(0,0,0,0.18);
@@ -419,23 +582,45 @@ function injectStyles() {
             font-family:
                 Arial, sans-serif;
 
-            font-size: 12px;
+            font-size:
+                12px;
+
         }
+
 
         .legendItem {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            margin: 4px 0;
+
+            display:
+                flex;
+
+            align-items:
+                center;
+
+            gap:
+                7px;
+
+            margin:
+                4px 0;
+
         }
+
 
         .legendLine {
-            width: 32px;
-            height: 5px;
-            border-radius: 5px;
+
+            width:
+                32px;
+
+            height:
+                5px;
+
+            border-radius:
+                5px;
+
         }
 
+
         .legendGradient {
+
             background:
                 linear-gradient(
                     90deg,
@@ -443,26 +628,41 @@ function injectStyles() {
                     ${SETTINGS.transitionColor},
                     ${SETTINGS.incomingColor}
                 );
+
         }
+
 
         .legendOutgoing {
+
             background:
                 ${SETTINGS.outgoingColor};
+
         }
 
+
         .legendIncoming {
+
             background:
                 ${SETTINGS.incomingColor};
+
         }
+
 
         @media (max-width: 700px) {
 
             .tables-container {
-                flex-direction: column;
+
+                flex-direction:
+                    column;
+
             }
 
+
             .table-column {
-                min-width: auto;
+
+                min-width:
+                    auto;
+
             }
 
         }
@@ -484,6 +684,7 @@ function createInterface() {
         document.getElementById(
             "migration-controls"
         );
+
 
     if (!controls) {
 
@@ -515,7 +716,7 @@ function createInterface() {
             </button>
 
             <button id="animationToggle">
-                ▶ Запустить потоки
+                ❚❚ Остановить потоки
             </button>
 
             <button id="tablesToggle">
@@ -524,9 +725,12 @@ function createInterface() {
 
         </div>
 
+
         <div class="year-slider-container">
 
-            <span>${SETTINGS.startYear}</span>
+            <span>
+                ${SETTINGS.startYear}
+            </span>
 
             <input
                 id="yearSlider"
@@ -537,13 +741,16 @@ function createInterface() {
                 value="${currentYear}"
             >
 
-            <span>${SETTINGS.endYear}</span>
+            <span>
+                ${SETTINGS.endYear}
+            </span>
 
             <strong id="yearLabel">
                 ${currentYear}
             </strong>
 
         </div>
+
 
         <div
             id="tablesContainer"
@@ -560,6 +767,7 @@ function createInterface() {
                 <div id="sourceTable"></div>
 
             </div>
+
 
             <div class="table-column">
 
@@ -599,10 +807,15 @@ function createInterface() {
                 year;
 
             button.addEventListener(
+
                 "click",
+
                 function () {
+
                     setYear(year);
+
                 }
+
             );
 
             yearButtons.appendChild(
@@ -617,7 +830,9 @@ function createInterface() {
     document
         .getElementById("prevYearBtn")
         .addEventListener(
+
             "click",
+
             function () {
 
                 const index =
@@ -632,13 +847,16 @@ function createInterface() {
                 }
 
             }
+
         );
 
 
     document
         .getElementById("nextYearBtn")
         .addEventListener(
+
             "click",
+
             function () {
 
                 const index =
@@ -656,13 +874,16 @@ function createInterface() {
                 }
 
             }
+
         );
 
 
     document
         .getElementById("yearSlider")
         .addEventListener(
+
             "input",
+
             function (event) {
 
                 setYear(
@@ -670,31 +891,43 @@ function createInterface() {
                 );
 
             }
+
         );
 
 
     document
         .getElementById("animationToggle")
         .addEventListener(
+
             "click",
+
             function () {
 
                 if (animationRunning) {
+
                     stopFlowAnimation();
+
                 }
+
                 else {
+
                     startFlowAnimation();
+
                 }
 
             }
+
         );
 
 
     document
         .getElementById("tablesToggle")
         .addEventListener(
+
             "click",
+
             toggleTables
+
         );
 
 
@@ -710,36 +943,68 @@ function createInterface() {
 function createLegend() {
 
     const old =
-        document.querySelector(".flowLegend");
+        document.querySelector(
+            ".flowLegend"
+        );
+
 
     if (old) {
+
         old.remove();
+
     }
+
 
     const legend =
         document.createElement("div");
 
+
     legend.className =
         "flowLegend";
+
 
     legend.innerHTML = `
 
         <div class="legendItem">
-            <span class="legendLine legendGradient"></span>
-            <span>Красный → синий</span>
+
+            <span
+                class="legendLine legendGradient"
+            ></span>
+
+            <span>
+                Красный → синий
+            </span>
+
         </div>
 
-        <div class="legendItem">
-            <span class="legendLine legendOutgoing"></span>
-            <span>Исходящие</span>
-        </div>
 
         <div class="legendItem">
-            <span class="legendLine legendIncoming"></span>
-            <span>Прибытие</span>
+
+            <span
+                class="legendLine legendOutgoing"
+            ></span>
+
+            <span>
+                Исходящие
+            </span>
+
+        </div>
+
+
+        <div class="legendItem">
+
+            <span
+                class="legendLine legendIncoming"
+            ></span>
+
+            <span>
+                Прибытие
+            </span>
+
         </div>
 
     `;
+
 
     document.body.appendChild(
         legend
@@ -757,11 +1022,17 @@ async function loadEverything() {
     try {
 
         const [
+
             fromText,
+
             toText,
+
             nodesText,
+
             edgesText,
+
             geojson
+
         ] = await Promise.all([
 
             loadFirstAvailableText(
@@ -792,56 +1063,73 @@ async function loadEverything() {
                 fromText
             );
 
+
         migrationTo =
             parseMigrationTo(
                 toText
             );
 
+
         prepareNodes(
             parseCSV(nodesText)
         );
 
+
         geojsonData =
             geojson;
+
 
         prepareRegions(
             geojsonData
         );
 
+
         prepareGraph(
             edgesText
         );
 
+
         prepareDestinationEdges();
+
 
         prepareSourceEdges();
 
+
         buildReverseGraph();
 
+
         drawRegions();
+
 
         calculateSegmentsForYear(
             currentYear
         );
 
+
         drawFlows();
+
 
         updateYearInterface();
 
+
         updateTables();
 
+
         fitMapToRegions();
+
 
         console.log(
             "Карта успешно загружена"
         );
 
     }
+
     catch (error) {
 
         console.error(
             error
         );
+
 
         showError(
             error.message
@@ -860,12 +1148,14 @@ async function loadFirstAvailableText(paths) {
 
     let lastError = null;
 
+
     for (const path of paths) {
 
         try {
 
             const response =
                 await fetch(path);
+
 
             if (response.ok) {
 
@@ -874,9 +1164,11 @@ async function loadFirstAvailableText(paths) {
                     path
                 );
 
+
                 return await response.text();
 
             }
+
 
             lastError =
                 new Error(
@@ -884,6 +1176,7 @@ async function loadFirstAvailableText(paths) {
                 );
 
         }
+
         catch (error) {
 
             lastError =
@@ -893,15 +1186,23 @@ async function loadFirstAvailableText(paths) {
 
     }
 
+
     throw new Error(
 
         "Не удалось загрузить файл:\n" +
+
         paths.join("\n") +
+
         "\n\n" +
+
         (
+
             lastError
+
                 ? lastError.message
+
                 : ""
+
         )
 
     );
@@ -917,6 +1218,7 @@ async function loadFirstAvailableJSON(paths) {
 
     let lastError = null;
 
+
     for (const path of paths) {
 
         try {
@@ -924,9 +1226,13 @@ async function loadFirstAvailableJSON(paths) {
             const response =
                 await fetch(path);
 
+
             if (response.ok) {
+
                 return await response.json();
+
             }
+
 
             lastError =
                 new Error(
@@ -934,6 +1240,7 @@ async function loadFirstAvailableJSON(paths) {
                 );
 
         }
+
         catch (error) {
 
             lastError =
@@ -943,13 +1250,21 @@ async function loadFirstAvailableJSON(paths) {
 
     }
 
+
     throw new Error(
+
         "Не удалось загрузить data.geojson: " +
+
         (
+
             lastError
+
                 ? lastError.message
+
                 : ""
+
         )
+
     );
 
 }
@@ -978,7 +1293,9 @@ function parseCSV(text) {
 
 
     if (!lines.length) {
+
         return [];
+
     }
 
 
@@ -997,26 +1314,21 @@ function parseCSV(text) {
     ) {
 
         const values =
-            parseCSVLine(
-                lines[i]
-            );
+            parseCSVLine(lines[i]);
+
 
         const row = {};
 
 
         headers.forEach(
+
             function (header, index) {
 
-                if (!header) {
-                    return;
-                }
-
                 row[header] =
-                    clean(
-                        values[index] || ""
-                    );
+                    clean(values[index]);
 
             }
+
         );
 
 
@@ -1031,7 +1343,7 @@ function parseCSV(text) {
 
 
 /* ============================================================
-   17. CSV-СТРОКА
+   17. РАЗБОР СТРОКИ CSV
    ============================================================ */
 
 function parseCSVLine(line) {
@@ -1039,7 +1351,8 @@ function parseCSVLine(line) {
     const result = [];
 
     let current = "";
-    let quoted = false;
+
+    let inQuotes = false;
 
 
     for (
@@ -1054,17 +1367,29 @@ function parseCSVLine(line) {
 
         if (char === '"') {
 
-            quoted =
-                !quoted;
+            if (
+                inQuotes &&
+                line[i + 1] === '"'
+            ) {
 
-            continue;
+                current += '"';
+
+                i++;
+
+            }
+
+            else {
+
+                inQuotes =
+                    !inQuotes;
+
+            }
 
         }
 
-
-        if (
+        else if (
             char === ";" &&
-            !quoted
+            !inQuotes
         ) {
 
             result.push(current);
@@ -1072,6 +1397,7 @@ function parseCSVLine(line) {
             current = "";
 
         }
+
         else {
 
             current += char;
@@ -1083,13 +1409,27 @@ function parseCSVLine(line) {
 
     result.push(current);
 
+
     return result;
 
 }
 
 
 /* ============================================================
-   18. MIGRATION FROM
+   18. ОЧИСТКА
+   ============================================================ */
+
+function clean(value) {
+
+    return String(value ?? "")
+        .replace(/^\uFEFF/, "")
+        .trim();
+
+}
+
+
+/* ============================================================
+   19. MIGRATION FROM
    ============================================================ */
 
 function parseMigrationFrom(text) {
@@ -1097,59 +1437,78 @@ function parseMigrationFrom(text) {
     const rows =
         parseCSV(text);
 
-    const result = [];
+
+    return rows
+        .map(
+
+            function (row) {
+
+                const origin =
+                    clean(
+                        row.Origin
+                    );
 
 
-    rows.forEach(
-        function (row) {
-
-            const origin =
-                clean(row.Origin);
-
-            const edge =
-                clean(row.EDGE);
-
-            if (!origin || !edge) {
-                return;
-            }
+                const edge =
+                    clean(
+                        row.EDGE
+                    );
 
 
-            const values = {};
+                if (
+                    !origin ||
+                    !edge
+                ) {
 
-
-            YEARS.forEach(
-                function (year) {
-
-                    values[year] =
-                        parseNumber(
-                            row[
-                                `year_${year}`
-                            ]
-                        );
+                    return null;
 
                 }
-            );
 
 
-            result.push({
-
-                origin,
-                edge,
-                values
-
-            });
-
-        }
-    );
+                const years = {};
 
 
-    return result;
+                YEARS.forEach(
+
+                    function (year) {
+
+                        const key =
+                            `year_${year}`;
+
+
+                        years[year] =
+                            parseNumber(
+                                row[key]
+                            );
+
+                    }
+
+                );
+
+
+                return {
+
+                    name:
+                        removeCsvExtension(
+                            origin
+                        ),
+
+                    edge,
+
+                    years
+
+                };
+
+            }
+
+        )
+        .filter(Boolean);
 
 }
 
 
 /* ============================================================
-   19. MIGRATION TO
+   20. MIGRATION TO
    ============================================================ */
 
 function parseMigrationTo(text) {
@@ -1157,102 +1516,156 @@ function parseMigrationTo(text) {
     const rows =
         parseCSV(text);
 
-    const result = [];
+
+    return rows
+        .map(
+
+            function (row) {
+
+                const destination =
+                    clean(
+                        row.Destinatoin ||
+                        row.Destination ||
+                        row.Destinition
+                    );
 
 
-    rows.forEach(
-        function (row) {
-
-            const destination =
-                clean(
-                    row.Destination ||
-                    row.Destinatoin ||
-                    row.destination ||
-                    row.destinatoin
-                );
-
-            const edge =
-                clean(row.EDGE);
-
-            if (
-                !destination ||
-                !edge
-            ) {
-                return;
-            }
+                const edge =
+                    clean(
+                        row.EDGE
+                    );
 
 
-            const values = {};
+                if (
+                    !destination ||
+                    !edge
+                ) {
 
-
-            YEARS.forEach(
-                function (year) {
-
-                    values[year] =
-                        parseNumber(
-                            row[
-                                `year_${year}`
-                            ]
-                        );
+                    return null;
 
                 }
-            );
 
 
-            result.push({
-
-                destination,
-                edge,
-                values
-
-            });
-
-        }
-    );
+                const years = {};
 
 
-    return result;
+                YEARS.forEach(
+
+                    function (year) {
+
+                        const key =
+                            `year_${year}`;
+
+
+                        years[year] =
+                            parseNumber(
+                                row[key]
+                            );
+
+                    }
+
+                );
+
+
+                return {
+
+                    name:
+                        removeCsvExtension(
+                            destination
+                        ),
+
+                    edge,
+
+                    years
+
+                };
+
+            }
+
+        )
+        .filter(Boolean);
 
 }
 
 
 /* ============================================================
-   20. NODES
+   21. ЧИСЛА
    ============================================================ */
 
-function prepareNodes(data) {
+function parseNumber(value) {
+
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+
+        return 0;
+
+    }
+
+
+    const number =
+        Number(
+            String(value)
+                .replace(",", ".")
+                .replace(/\s/g, "")
+        );
+
+
+    return Number.isFinite(number)
+        ? number
+        : 0;
+
+}
+
+
+/* ============================================================
+   22. УДАЛЕНИЕ .CSV
+   ============================================================ */
+
+function removeCsvExtension(name) {
+
+    return String(name || "")
+        .replace(/\.csv$/i, "")
+        .trim();
+
+}
+
+
+/* ============================================================
+   23. NODES
+   ============================================================ */
+
+function prepareNodes(rows) {
 
     nodes = {};
 
 
-    data.forEach(
+    rows.forEach(
+
         function (row) {
 
             const id =
-                clean(
-                    row.NODE ||
-                    row.id ||
-                    row.Id ||
-                    row.ID
-                );
+                clean(row.id);
 
 
             if (!id) {
+
                 return;
+
             }
 
 
-            let lat =
-                parseCoordinate(
-                    row.LAT ??
-                    row.lat
+            const lat =
+                parseNumber(
+                    clean(row.lat)
                 );
 
-            let lon =
-                parseCoordinate(
-                    row.LONG ??
-                    row.lon ??
-                    row.LON
+
+            const lon =
+                parseNumber(
+                    clean(row.lon)
                 );
 
 
@@ -1260,253 +1673,170 @@ function prepareNodes(data) {
                 !Number.isFinite(lat) ||
                 !Number.isFinite(lon)
             ) {
+
                 return;
+
             }
 
 
             nodes[id] = {
 
                 id,
+
                 lat,
+
                 lon
 
             };
 
         }
-    );
 
-
-    console.log(
-        "Узлов:",
-        Object.keys(nodes).length
     );
 
 }
 
 
 /* ============================================================
-   21. РЕГИОНЫ
+   24. GEOJSON РЕГИОНЫ
    ============================================================ */
 
-function prepareRegions(geojson) {
+function prepareRegions(data) {
 
     regions = {};
 
 
     if (
-        !geojson ||
-        !Array.isArray(
-            geojson.features
-        )
+        !data ||
+        !Array.isArray(data.features)
     ) {
+
         return;
+
     }
 
 
-    geojson.features.forEach(
+    data.features.forEach(
+
         function (feature) {
 
-            const properties =
-                feature.properties || {};
+            if (
+                !feature ||
+                !feature.properties
+            ) {
+
+                return;
+
+            }
+
 
             const name =
                 clean(
-                    properties.prov_ENG ||
-                    properties.name ||
-                    properties.NAME ||
-                    properties.Name
+                    feature.properties.prov_ENG
                 );
 
 
             if (!name) {
+
                 return;
+
             }
 
 
-            regions[name] = {
-
-                name,
-                feature
-
-            };
+            regions[name] =
+                feature;
 
         }
-    );
 
-
-    console.log(
-        "Регионов:",
-        Object.keys(regions).length
     );
 
 }
 
 
 /* ============================================================
-   22. ГРАФ EDGES
+   25. ГРАФ
    ============================================================ */
 
 function prepareGraph(text) {
 
     graph = {};
-    routeCache = {};
-
-    text =
-        String(text || "")
-        .replace(/^\uFEFF/, "")
-        .replace(/\r\n/g, "\n")
-        .replace(/\r/g, "\n");
 
 
-    const lines =
-        text
-        .split("\n")
-        .filter(
-            line =>
-                line.trim() !== ""
-        );
+    const rows =
+        parseCSV(text);
 
 
-    lines.forEach(
-        function (line) {
+    rows.forEach(
 
-            const values =
-                parseCSVLine(line)
-                .map(clean);
+        function (row) {
 
-
-            /*
-             * Берём только N-узлы.
-             *
-             * Поэтому строка:
-             *
-             * N1;N2;...;Тургайская
-             *
-             * превращается в:
-             *
-             * N1 → N2 → ...
-             *
-             * Название региона в конце игнорируется.
-             */
-
-            const nodeValues =
-                values.filter(
-                    value =>
-                        /^N\d+$/i.test(value)
+            const from =
+                clean(
+                    row.from ||
+                    row.FROM ||
+                    row.EDGE
                 );
 
 
-            if (
-                nodeValues.length < 2
-            ) {
+            if (!from) {
+
                 return;
+
             }
 
 
-            for (
-                let i = 0;
-                i < nodeValues.length - 1;
-                i++
-            ) {
+            if (!graph[from]) {
 
-                addGraphEdge(
-                    nodeValues[i],
-                    nodeValues[i + 1]
+                graph[from] = [];
+
+            }
+
+
+            Object.keys(row)
+                .forEach(
+
+                    function (key) {
+
+                        if (
+                            key === "from" ||
+                            key === "FROM" ||
+                            key === "EDGE"
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        const to =
+                            clean(row[key]);
+
+
+                        if (
+                            !to ||
+                            to === from
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        if (
+                            !graph[from]
+                                .includes(to)
+                        ) {
+
+                            graph[from]
+                                .push(to);
+
+                        }
+
+                    }
+
                 );
 
-            }
-
         }
-    );
 
-
-    console.log(
-        "Узлов графа:",
-        Object.keys(graph).length
-    );
-
-}
-
-
-/* ============================================================
-   23. РЕБРО
-   ============================================================ */
-
-function addGraphEdge(from, to) {
-
-    if (!graph[from]) {
-        graph[from] = [];
-    }
-
-
-    if (
-        !graph[from].includes(to)
-    ) {
-
-        graph[from].push(to);
-
-    }
-
-}
-
-
-/* ============================================================
-   24. EDGE НАЗНАЧЕНИЯ
-   ============================================================ */
-
-function prepareDestinationEdges() {
-
-    destinationByEdge = {};
-
-
-    migrationTo.forEach(
-        function (item) {
-
-            if (
-                !destinationByEdge[item.edge]
-            ) {
-
-                destinationByEdge[item.edge] =
-                    [];
-
-            }
-
-
-            destinationByEdge[item.edge]
-                .push(item);
-
-        }
-    );
-
-}
-
-
-/* ============================================================
-   25. EDGE ИСХОДА
-   ============================================================ */
-
-function prepareSourceEdges() {
-
-    sourceByEdge = {};
-
-
-    migrationFrom.forEach(
-        function (item) {
-
-            if (
-                !sourceByEdge[item.edge]
-            ) {
-
-                sourceByEdge[item.edge] =
-                    [];
-
-            }
-
-
-            sourceByEdge[item.edge]
-                .push(item);
-
-        }
     );
 
 }
@@ -1521,1491 +1851,877 @@ function buildReverseGraph() {
     reverseGraph = {};
 
 
-    Object.keys(graph).forEach(
-        function (from) {
-
-            graph[from].forEach(
-                function (to) {
-
-                    if (
-                        !reverseGraph[to]
-                    ) {
-
-                        reverseGraph[to] = [];
-
-                    }
-
-
-                    if (
-                        !reverseGraph[to]
-                            .includes(from)
-                    ) {
-
-                        reverseGraph[to]
-                            .push(from);
-
-                    }
-
-                }
-            );
-
-        }
-    );
-
-}
-
-
-/* ============================================================
-   27. СМЕНА ГОДА
-   ============================================================ */
-
-function setYear(year) {
-
-    year =
-        Number(year);
-
-
-    if (
-        !YEARS.includes(year)
-    ) {
-        return;
-    }
-
-
-    currentYear =
-        year;
-
-
-    /*
-     * ВАЖНО:
-     *
-     * Здесь анимация НЕ выключается.
-     *
-     * Если она была запущена,
-     * после перерисовки она продолжается.
-     */
-
-    calculateSegmentsForYear(
-        currentYear
-    );
-
-    drawFlows();
-
-    updateYearInterface();
-
-    updateTables();
-
-}
-
-
-/* ============================================================
-   28. ИНТЕРФЕЙС ГОДА
-   ============================================================ */
-
-function updateYearInterface() {
-
-    document
-        .querySelectorAll(".yearButton")
+    Object.keys(graph)
         .forEach(
-            function (button) {
 
-                button.classList.toggle(
-                    "active",
-                    Number(
-                        button.dataset.year
-                    ) === currentYear
-                );
+            function (from) {
 
-            }
-        );
+                graph[from]
+                    .forEach(
 
+                        function (to) {
 
-    const slider =
-        document.getElementById(
-            "yearSlider"
-        );
+                            if (
+                                !reverseGraph[to]
+                            ) {
 
-    if (slider) {
-        slider.value =
-            currentYear;
-    }
-
-
-    const label =
-        document.getElementById(
-            "yearLabel"
-        );
-
-    if (label) {
-        label.textContent =
-            currentYear;
-    }
-
-}
-
-
-/* ============================================================
-   29. РАСЧЁТ СЕГМЕНТОВ
-   ============================================================ */
-
-function calculateSegmentsForYear(year) {
-
-    outgoingSegments =
-        buildOutgoingSegments(year);
-
-    incomingSegments =
-        buildIncomingSegments(year);
-
-}
-
-
-/* ============================================================
-   30. ИСХОДЯЩИЕ ПОТОКИ
-   ============================================================ */
-
-function buildOutgoingSegments(year) {
-
-    const segmentMap = {};
-
-
-    migrationFrom.forEach(
-        function (source) {
-
-            const value =
-                source.values[year] || 0;
-
-
-            if (value <= 0) {
-                return;
-            }
-
-
-            const routes =
-                getRoutesFromEdge(
-                    source.edge
-                );
-
-
-            if (!routes.length) {
-
-                console.warn(
-                    "Нет маршрута:",
-                    source.origin,
-                    source.edge
-                );
-
-                return;
-
-            }
-
-
-            const routeObjects = [];
-
-
-            routes.forEach(
-                function (route) {
-
-                    route.destinations
-                        .forEach(
-                            function (destination) {
-
-                                const destinationValue =
-                                    destination.values[
-                                        year
-                                    ] || 0;
-
-
-                                routeObjects.push({
-
-                                    path:
-                                        route.path,
-
-                                    destination:
-                                        destination.destination,
-
-                                    destinationEdge:
-                                        destination.edge,
-
-                                    destinationValue
-
-                                });
+                                reverseGraph[to] =
+                                    [];
 
                             }
-                        );
-
-                }
-            );
 
 
-            /*
-             * Если соответствующих конечных
-             * регионов нет, рисуем поток
-             * по найденным маршрутам целиком.
-             */
+                            if (
+                                !reverseGraph[to]
+                                    .includes(from)
+                            ) {
 
-            if (!routeObjects.length) {
+                                reverseGraph[to]
+                                    .push(from);
 
-                routes.forEach(
-                    function (route) {
+                            }
 
-                        addSegment(
-                            segmentMap,
-                            route.path,
-                            value,
-                            "outgoing",
-                            source.origin
-                        );
+                        }
 
-                    }
-                );
-
-                return;
+                    );
 
             }
 
-
-            const totalDestination =
-                routeObjects.reduce(
-                    function (sum, item) {
-
-                        return (
-                            sum +
-                            item.destinationValue
-                        );
-
-                    },
-                    0
-                );
-
-
-            /*
-             * Если в migration_to для года
-             * нет чисел — распределяем поток
-             * равномерно между маршрутами.
-             */
-
-            if (totalDestination <= 0) {
-
-                const share =
-                    value /
-                    routeObjects.length;
-
-
-                routeObjects.forEach(
-                    function (route) {
-
-                        addSegment(
-                            segmentMap,
-                            route.path,
-                            share,
-                            "outgoing",
-                            source.origin
-                        );
-
-                    }
-                );
-
-            }
-            else {
-
-                /*
-                 * ВАЖНО:
-                 *
-                 * Сам поток берём из migration_from.
-                 *
-                 * migration_to используется
-                 * только для определения направления
-                 * и пропорции.
-                 */
-
-                routeObjects.forEach(
-                    function (route) {
-
-                        const share =
-                            value *
-                            (
-                                route.destinationValue /
-                                totalDestination
-                            );
-
-
-                        addSegment(
-                            segmentMap,
-                            route.path,
-                            share,
-                            "outgoing",
-                            source.origin
-                        );
-
-                    }
-                );
-
-            }
-
-        }
-    );
-
-
-    return Object.values(
-        segmentMap
-    );
+        );
 
 }
 
 
 /* ============================================================
-   31. ВХОДЯЩИЕ ПОТОКИ
+   27. EDGE → DESTINATION
    ============================================================ */
 
-function buildIncomingSegments(year) {
+function prepareDestinationEdges() {
 
-    const segmentMap = {};
+    destinationByEdge = {};
 
 
     migrationTo.forEach(
-        function (destination) {
 
-            const value =
-                destination.values[year] || 0;
+        function (item) {
 
-
-            if (value <= 0) {
-                return;
-            }
-
-
-            const routes =
-                getRoutesToEdge(
-                    destination.edge
-                );
-
-
-            if (!routes.length) {
-
-                console.warn(
-                    "Нет входящего маршрута:",
-                    destination.destination,
-                    destination.edge
-                );
-
-                return;
-
-            }
-
-
-            /*
-             * Если существует несколько
-             * возможных входов,
-             * делим входящий поток между ними.
-             */
-
-            const share =
-                value /
-                routes.length;
-
-
-            routes.forEach(
-                function (path) {
-
-                    addSegment(
-                        segmentMap,
-                        path,
-                        share,
-                        "incoming",
-                        destination.destination
-                    );
-
-                }
-            );
-
-        }
-    );
-
-
-    return Object.values(
-        segmentMap
-    );
-
-}
-
-
-/* ============================================================
-   32. ДОБАВЛЕНИЕ СЕГМЕНТА
-   ============================================================ */
-
-function addSegment(
-    segmentMap,
-    path,
-    value,
-    type,
-    name
-) {
-
-    if (
-        !path ||
-        path.length < 2 ||
-        value <= 0
-    ) {
-        return;
-    }
-
-
-    const denominator =
-        path.length - 1;
-
-
-    for (
-        let i = 0;
-        i < denominator;
-        i++
-    ) {
-
-        const from =
-            path[i];
-
-        const to =
-            path[i + 1];
-
-        const key =
-            `${type}|${from}|${to}`;
-
-
-        if (!segmentMap[key]) {
-
-            segmentMap[key] = {
-
-                from,
-                to,
-
-                value: 0,
-
-                type,
-
-                names: {},
-
-                progressStartWeighted: 0,
-                progressEndWeighted: 0,
-                progressWeight: 0
-
-            };
+            destinationByEdge[
+                item.edge
+            ] = item.name;
 
         }
 
+    );
 
-        segmentMap[key].value +=
-            value;
-
-
-        segmentMap[key].names[name] =
-            (
-                segmentMap[key].names[name] ||
-                0
-            ) + value;
+}
 
 
-        const progressStart =
-            i / denominator;
+/* ============================================================
+   28. EDGE → SOURCE
+   ============================================================ */
 
-        const progressEnd =
-            (i + 1) /
-            denominator;
+function prepareSourceEdges() {
 
-
-        segmentMap[key]
-            .progressStartWeighted +=
-                progressStart * value;
+    sourceByEdge = {};
 
 
-        segmentMap[key]
-            .progressEndWeighted +=
-                progressEnd * value;
+    migrationFrom.forEach(
 
+        function (item) {
 
-        segmentMap[key]
-            .progressWeight +=
-                value;
-
-    }
-
-
-    /*
-     * Рассчитываем положение каждого
-     * сегмента внутри полного маршрута.
-     */
-
-    for (
-        let i = 0;
-        i < denominator;
-        i++
-    ) {
-
-        const key =
-            `${type}|${path[i]}|${path[i + 1]}`;
-
-        const segment =
-            segmentMap[key];
-
-
-        if (
-            segment &&
-            segment.progressWeight > 0
-        ) {
-
-            segment.progressStart =
-                segment.progressStartWeighted /
-                segment.progressWeight;
-
-            segment.progressEnd =
-                segment.progressEndWeighted /
-                segment.progressWeight;
+            sourceByEdge[
+                item.edge
+            ] = item.name;
 
         }
 
-    }
-
-}
-
-
-/* ============================================================
-   33. ПУТИ ОТ EDGE ИСХОДА
-   ============================================================ */
-
-function getRoutesFromEdge(startEdge) {
-
-    const key =
-        "FROM|" + startEdge;
-
-
-    if (routeCache[key]) {
-        return routeCache[key];
-    }
-
-
-    const result = [];
-
-
-    walkForward(
-        startEdge,
-        [startEdge],
-        new Set(),
-        result
-    );
-
-
-    routeCache[key] =
-        result;
-
-
-    return result;
-
-}
-
-
-/* ============================================================
-   34. ОБХОД ВПЕРЁД
-   ============================================================ */
-
-function walkForward(
-    current,
-    path,
-    visited,
-    result
-) {
-
-    if (
-        visited.has(current)
-    ) {
-        return;
-    }
-
-
-    const nextVisited =
-        new Set(visited);
-
-    nextVisited.add(current);
-
-
-    /*
-     * Если узел является EDGE назначения,
-     * запоминаем маршрут.
-     *
-     * Но НЕ останавливаем обход.
-     *
-     * Это критично для N189/N190,
-     * которые могут быть промежуточными узлами.
-     */
-
-    const destinations =
-        destinationByEdge[current] || [];
-
-
-    if (destinations.length) {
-
-        result.push({
-
-            path: [...path],
-
-            destinations
-
-        });
-
-    }
-
-
-    const nextNodes =
-        graph[current] || [];
-
-
-    nextNodes.forEach(
-        function (next) {
-
-            walkForward(
-                next,
-
-                [
-                    ...path,
-                    next
-                ],
-
-                nextVisited,
-
-                result
-            );
-
-        }
     );
 
 }
 
 
 /* ============================================================
-   35. ПУТИ К EDGE НАЗНАЧЕНИЯ
-   ============================================================ */
-
-function getRoutesToEdge(destinationEdge) {
-
-    const key =
-        "TO|" + destinationEdge;
-
-
-    if (routeCache[key]) {
-        return routeCache[key];
-    }
-
-
-    const paths = [];
-
-
-    walkBackward(
-        destinationEdge,
-        [destinationEdge],
-        new Set(),
-        paths
-    );
-
-
-    const result =
-        paths.map(
-            function (path) {
-
-                return [
-                    ...path
-                ].reverse();
-
-            }
-        );
-
-
-    routeCache[key] =
-        result;
-
-
-    return result;
-
-}
-
-
-/* ============================================================
-   36. ОБХОД НАЗАД
-   ============================================================ */
-
-function walkBackward(
-    current,
-    path,
-    visited,
-    result
-) {
-
-    if (
-        visited.has(current)
-    ) {
-        return;
-    }
-
-
-    const nextVisited =
-        new Set(visited);
-
-    nextVisited.add(current);
-
-
-    const previous =
-        reverseGraph[current] || [];
-
-
-    if (!previous.length) {
-
-        result.push(
-            [...path]
-        );
-
-        return;
-
-    }
-
-
-    previous.forEach(
-        function (previousNode) {
-
-            walkBackward(
-
-                previousNode,
-
-                [
-                    ...path,
-                    previousNode
-                ],
-
-                nextVisited,
-
-                result
-
-            );
-
-        }
-    );
-
-}
-
-
-/* ============================================================
-   37. РЕГИОНЫ
+   29. РЕГИОНЫ
    ============================================================ */
 
 function drawRegions() {
 
     regionsLayer.clearLayers();
 
+
     regionLayers = {};
 
 
-    Object.values(regions)
+    Object.keys(regions)
         .forEach(
-            function (region) {
 
-                /*
-                 * ВАЖНО:
-                 *
-                 * Никаких N-узлов здесь нет.
-                 *
-                 * Мы рисуем только GeoJSON-регионы.
-                 */
+            function (name) {
+
+                const feature =
+                    regions[name];
+
 
                 const layer =
                     L.geoJSON(
-                        region.feature,
+
+                        feature,
+
                         {
 
                             style:
-                                getRegionStyle(
-                                    region.name
-                                )
+                                function () {
+
+                                    return {
+
+                                        color:
+                                            SETTINGS.regionBorderColor,
+
+                                        weight:
+                                            0.8,
+
+                                        fillColor:
+                                            SETTINGS.regionFillColor,
+
+                                        fillOpacity:
+                                            SETTINGS.regionFillOpacity
+
+                                    };
+
+                                },
+
+                            onEachFeature:
+                                function (
+                                    feature,
+                                    layer
+                                ) {
+
+                                    layer.on(
+
+                                        {
+
+                                            mouseover:
+                                                function () {
+
+                                                    showRegionValue(
+                                                        name
+                                                    );
+
+                                                },
+
+                                            mouseout:
+                                                function () {
+
+                                                    hideRegionValue();
+
+                                                },
+
+                                            click:
+                                                function (
+                                                    event
+                                                ) {
+
+                                                    L.DomEvent
+                                                        .stopPropagation(
+                                                            event
+                                                        );
+
+
+                                                    selectRegion(
+                                                        name
+                                                    );
+
+                                                }
+
+                                        }
+
+                                    );
+
+                                }
 
                         }
+
                     );
-
-
-                /*
-                 * Tooltip только у региона.
-                 *
-                 * На потоки tooltip не ставится.
-                 */
-
-                layer.bindTooltip(
-                    function () {
-
-                        return createRegionTooltip(
-                            region.name
-                        );
-
-                    },
-                    {
-                        sticky: true,
-                        direction: "top"
-                    }
-                );
-
-
-                layer.on(
-                    "mouseover",
-                    function () {
-
-                        const style =
-                            getRegionStyle(
-                                region.name
-                            );
-
-                        layer.setStyle({
-
-                            ...style,
-
-                            weight:
-                                style.weight + 0.8
-
-                        });
-
-                    }
-                );
-
-
-                layer.on(
-                    "mouseout",
-                    function () {
-
-                        layer.setStyle(
-                            getRegionStyle(
-                                region.name
-                            )
-                        );
-
-                    }
-                );
-
-
-                layer.on(
-                    "click",
-                    function (event) {
-
-                        L.DomEvent
-                            .stopPropagation(
-                                event
-                            );
-
-                        selectRegion(
-                            region.name
-                        );
-
-                    }
-                );
-
-
-                regionLayers[
-                    region.name
-                ] = layer;
 
 
                 layer.addTo(
                     regionsLayer
                 );
 
+
+                regionLayers[name] =
+                    layer;
+
             }
+
         );
 
 }
 
 
 /* ============================================================
-   38. ДАННЫЕ РЕГИОНА
+   30. HOVER РЕГИОНА
    ============================================================ */
 
-function getRegionYearValues(
-    regionName
-) {
+let regionHoverTooltip = null;
 
-    const normalized =
-        normalizeName(
-            regionName
-        );
 
+function showRegionValue(name) {
 
-    const sourceValue =
-        migrationFrom
-            .filter(
-                item =>
-                    normalizeName(
-                        item.origin
-                    ) === normalized
-            )
-            .reduce(
-                function (sum, item) {
-
-                    return (
-                        sum +
-                        (
-                            item.values[
-                                currentYear
-                            ] || 0
-                        )
-                    );
-
-                },
-                0
-            );
-
-
-    const destinationValue =
-        migrationTo
-            .filter(
-                item =>
-                    normalizeName(
-                        item.destination
-                    ) === normalized
-            )
-            .reduce(
-                function (sum, item) {
-
-                    return (
-                        sum +
-                        (
-                            item.values[
-                                currentYear
-                            ] || 0
-                        )
-                    );
-
-                },
-                0
-            );
-
-
-    return {
-
-        sourceValue,
-        destinationValue
-
-    };
-
-}
-
-
-/* ============================================================
-   39. РОЛЬ РЕГИОНА
-   ============================================================ */
-
-function getRegionRole(
-    regionName
-) {
-
-    const values =
-        getRegionYearValues(
-            regionName
-        );
-
-
-    if (
-        values.sourceValue > 0 &&
-        values.destinationValue > 0
-    ) {
-        return "both";
-    }
-
-
-    if (
-        values.sourceValue > 0
-    ) {
-        return "source";
-    }
-
-
-    if (
-        values.destinationValue > 0
-    ) {
-        return "destination";
-    }
-
-
-    return "none";
-
-}
-
-
-/* ============================================================
-   40. КЛИК ПО РЕГИОНУ
-   ============================================================ */
-
-function selectRegion(
-    regionName
-) {
-
-    /*
-     * Повторный клик снимает выделение.
-     */
-
-    if (
-        selectedRegion === regionName
-    ) {
-
-        clearRegionSelection();
-
-        return;
-
-    }
-
-
-    selectedRegion =
-        regionName;
-
-    selectedRegionRole =
-        getRegionRole(
-            regionName
-        );
-
-
-    selectedSourceNames =
-        new Set();
-
-    selectedDestinationNames =
-        new Set();
-
-
-    const normalized =
-        normalizeName(
-            regionName
-        );
-
-
-    /*
-     * ВЫБРАН РЕГИОН ИСХОДА
-     */
-
-    if (
-        selectedRegionRole === "source" ||
-        selectedRegionRole === "both"
-    ) {
-
-        migrationFrom
-            .filter(
-                item =>
-                    normalizeName(
-                        item.origin
-                    ) === normalized
-            )
-            .forEach(
-                function (source) {
-
-                    selectedSourceNames.add(
-                        normalizeName(
-                            source.origin
-                        )
-                    );
-
-
-                    const routes =
-                        getRoutesFromEdge(
-                            source.edge
-                        );
-
-
-                    routes.forEach(
-                        function (route) {
-
-                            (
-                                route.destinations ||
-                                []
-                            )
-                            .forEach(
-                                function (destination) {
-
-                                    const value =
-                                        destination
-                                            .values[
-                                                currentYear
-                                            ] || 0;
-
-
-                                    if (
-                                        value > 0
-                                    ) {
-
-                                        selectedDestinationNames
-                                            .add(
-                                                normalizeName(
-                                                    destination.destination
-                                                )
-                                            );
-
-                                    }
-
-                                }
-                            );
-
-                        }
-                    );
-
-                }
-            );
-
-    }
-
-
-    /*
-     * ВЫБРАН РЕГИОН НАЗНАЧЕНИЯ
-     */
-
-    if (
-        selectedRegionRole === "destination" ||
-        selectedRegionRole === "both"
-    ) {
-
-        migrationTo
-            .filter(
-                item =>
-                    normalizeName(
-                        item.destination
-                    ) === normalized
-            )
-            .forEach(
-                function (destination) {
-
-                    selectedDestinationNames.add(
-                        normalizeName(
-                            destination.destination
-                        )
-                    );
-
-
-                    migrationFrom.forEach(
-                        function (source) {
-
-                            const routes =
-                                getRoutesFromEdge(
-                                    source.edge
-                                );
-
-
-                            const reaches =
-                                routes.some(
-                                    function (route) {
-
-                                        return (
-                                            route.destinations ||
-                                            []
-                                        )
-                                        .some(
-                                            function (item) {
-
-                                                return (
-                                                    normalizeName(
-                                                        item.destination
-                                                    ) ===
-                                                    normalized
-                                                );
-
-                                            }
-                                        );
-
-                                    }
-                                );
-
-
-                            if (reaches) {
-
-                                selectedSourceNames.add(
-                                    normalizeName(
-                                        source.origin
-                                    )
-                                );
-
-                            }
-
-                        }
-                    );
-
-                }
-            );
-
-    }
-
-
-    updateRegionStyles();
-
-}
-
-
-/* ============================================================
-   41. СБРОС ВЫДЕЛЕНИЯ
-   ============================================================ */
-
-function clearRegionSelection() {
-
-    selectedRegion = null;
-
-    selectedRegionRole = null;
-
-    selectedSourceNames =
-        new Set();
-
-    selectedDestinationNames =
-        new Set();
-
-    updateRegionStyles();
-
-}
-
-
-/* ============================================================
-   42. СТИЛЬ РЕГИОНА
-   ============================================================ */
-
-function getRegionStyle(
-    regionName
-) {
-
-    const style = {
-
-        color:
-            SETTINGS.regionBorderColor,
-
-        weight:
-            0.8,
-
-        fillColor:
-            SETTINGS.regionFillColor,
-
-        fillOpacity:
-            SETTINGS.regionFillOpacity
-
-    };
-
-
-    if (!selectedRegion) {
-        return style;
-    }
-
-
-    const normalized =
-        normalizeName(
-            regionName
-        );
-
-
-    /*
-     * Красный — исход.
-     */
-
-    if (
-        selectedSourceNames.has(
-            normalized
-        )
-    ) {
-
-        style.color =
-            SETTINGS.selectedSourceColor;
-
-        style.fillColor =
-            SETTINGS.selectedSourceColor;
-
-        style.fillOpacity =
-            SETTINGS.selectedSourceOpacity;
-
-        style.weight = 1.8;
-
-    }
-
-
-    /*
-     * Синий — прибытие.
-     */
-
-    if (
-        selectedDestinationNames.has(
-            normalized
-        )
-    ) {
-
-        style.color =
-            SETTINGS.selectedDestinationColor;
-
-        style.fillColor =
-            SETTINGS.selectedDestinationColor;
-
-        style.fillOpacity =
-            SETTINGS.selectedDestinationOpacity;
-
-        style.weight = 1.8;
-
-    }
-
-
-    /*
-     * Если регион одновременно
-     * источник и назначение — фиолетовый.
-     */
-
-    if (
-        selectedRegion === regionName &&
-        selectedRegionRole === "both"
-    ) {
-
-        style.color =
-            SETTINGS.transitionColor;
-
-        style.fillColor =
-            SETTINGS.transitionColor;
-
-        style.fillOpacity = 0.48;
-
-        style.weight = 2;
-
-    }
-
-
-    return style;
-
-}
-
-
-/* ============================================================
-   43. ОБНОВЛЕНИЕ РЕГИОНОВ
-   ============================================================ */
-
-function updateRegionStyles() {
-
-    Object.entries(
-        regionLayers
-    )
-    .forEach(
-        function ([name, layer]) {
-
-            layer.setStyle(
-                getRegionStyle(name)
-            );
-
-        }
-    );
-
-}
-
-
-/* ============================================================
-   44. TOOLTIP РЕГИОНА
-   ============================================================ */
-
-function createRegionTooltip(
-    regionName
-) {
-
-    /*
-     * ВАЖНО:
-     *
-     * Здесь НЕТ расчётных потоков.
-     *
-     * Показываем только данные
-     * из migration_from / migration_to.
-     */
-
-    const sourceItems =
-        migrationFrom.filter(
+    const source =
+        migrationFrom.find(
             item =>
-                normalizeName(
-                    item.origin
-                ) ===
-                normalizeName(
-                    regionName
-                )
+                item.name === name
         );
 
 
-    const destinationItems =
-        migrationTo.filter(
+    const destination =
+        migrationTo.find(
             item =>
-                normalizeName(
-                    item.destination
-                ) ===
-                normalizeName(
-                    regionName
-                )
+                item.name === name
         );
 
 
     let html =
-        `<b>${escapeHTML(
-            regionName
-        )}</b>`;
+        `<strong>${escapeHtml(name)}</strong>`;
 
 
-    sourceItems.forEach(
-        function (item) {
-
-            html +=
-                `<br>Исходящие: ` +
-                `<b>${formatNumber(
-                    item.values[currentYear] || 0
-                )}</b>`;
-
-        }
-    );
-
-
-    destinationItems.forEach(
-        function (item) {
-
-            html +=
-                `<br>Переселившиеся: ` +
-                `<b>${formatNumber(
-                    item.values[currentYear] || 0
-                )}</b>`;
-
-        }
-    );
-
-
-    if (
-        sourceItems.length === 0 &&
-        destinationItems.length === 0
-    ) {
+    if (source) {
 
         html +=
-            "<br>Нет данных";
+            `<br>Исход: ${formatNumber(
+                source.years[currentYear]
+            )}`;
 
     }
 
 
-    return html;
+    if (destination) {
+
+        html +=
+            `<br>Прибытие: ${formatNumber(
+                destination.years[currentYear]
+            )}`;
+
+    }
+
+
+    if (!regionHoverTooltip) {
+
+        regionHoverTooltip =
+            L.tooltip({
+
+                sticky: true,
+
+                direction: "top"
+
+            });
+
+    }
+
+
+    regionHoverTooltip
+        .setContent(html);
+
+
+    if (
+        !map.hasLayer(
+            regionHoverTooltip
+        )
+    ) {
+
+        regionHoverTooltip
+            .addTo(map);
+
+    }
 
 }
 
 
 /* ============================================================
-   45. РИСОВАНИЕ ПОТОКОВ
+   31. СКРЫТЬ HOVER
+   ============================================================ */
+
+function hideRegionValue() {
+
+    if (
+        regionHoverTooltip &&
+        map.hasLayer(
+            regionHoverTooltip
+        )
+    ) {
+
+        map.removeLayer(
+            regionHoverTooltip
+        );
+
+    }
+
+}
+
+
+/* ============================================================
+   32. СЕГМЕНТЫ ЗА ГОД
+   ============================================================ */
+
+function calculateSegmentsForYear(year) {
+
+    outgoingSegments = [];
+
+    incomingSegments = [];
+
+
+    routeCache = {};
+
+
+    migrationFrom.forEach(
+
+        function (source) {
+
+            const value =
+                source.years[year] || 0;
+
+
+            if (value <= 0) {
+
+                return;
+
+            }
+
+
+            const routes =
+                findRoutesToDestinations(
+                    source.edge
+                );
+
+
+            routes.forEach(
+
+                function (route) {
+
+                    const destinationName =
+                        destinationByEdge[
+                            route.destinationEdge
+                        ];
+
+
+                    if (!destinationName) {
+
+                        return;
+
+                    }
+
+
+                    const destination =
+                        migrationTo.find(
+
+                            item =>
+                                item.name ===
+                                destinationName
+
+                        );
+
+
+                    if (!destination) {
+
+                        return;
+
+                    }
+
+
+                    const destinationValue =
+                        destination.years[year] ||
+                        0;
+
+
+                    if (
+                        destinationValue <= 0
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const segmentValue =
+                        Math.min(
+                            value,
+                            destinationValue
+                        );
+
+
+                    route.segments.forEach(
+
+                        function (segment) {
+
+                            outgoingSegments
+                                .push({
+
+                                    from:
+                                        segment.from,
+
+                                    to:
+                                        segment.to,
+
+                                    value:
+                                        segmentValue,
+
+                                    type:
+                                        "outgoing",
+
+                                    source:
+                                        source.name,
+
+                                    destination:
+                                        destinationName,
+
+                                    progress:
+                                        segment.progress
+
+                                });
+
+                        }
+
+                    );
+
+                }
+
+            );
+
+        }
+
+    );
+
+
+    migrationTo.forEach(
+
+        function (destination) {
+
+            const value =
+                destination.years[year] || 0;
+
+
+            if (value <= 0) {
+
+                return;
+
+            }
+
+
+            const sourceEdges =
+                reverseGraph[
+                    destination.edge
+                ] || [];
+
+
+            sourceEdges.forEach(
+
+                function (sourceEdge) {
+
+                    const sourceName =
+                        sourceByEdge[
+                            sourceEdge
+                        ];
+
+
+                    if (!sourceName) {
+
+                        return;
+
+                    }
+
+
+                    const source =
+                        migrationFrom.find(
+
+                            item =>
+                                item.name ===
+                                sourceName
+
+                        );
+
+
+                    if (!source) {
+
+                        return;
+
+                    }
+
+
+                    const sourceValue =
+                        source.years[year] ||
+                        0;
+
+
+                    if (
+                        sourceValue <= 0
+                    ) {
+
+                        return;
+
+                    }
+
+
+                    const segmentValue =
+                        Math.min(
+                            value,
+                            sourceValue
+                        );
+
+
+                    const routes =
+                        findRoutesToEdge(
+                            sourceEdge,
+                            destination.edge
+                        );
+
+
+                    routes.forEach(
+
+                        function (route) {
+
+                            route.segments
+                                .forEach(
+
+                                    function (segment) {
+
+                                        incomingSegments
+                                            .push({
+
+                                                from:
+                                                    segment.from,
+
+                                                to:
+                                                    segment.to,
+
+                                                value:
+                                                    segmentValue,
+
+                                                type:
+                                                    "incoming",
+
+                                                source:
+                                                    sourceName,
+
+                                                destination:
+                                                    destination.name,
+
+                                                progress:
+                                                    segment.progress
+
+                                            });
+
+                                    }
+
+                                );
+
+                        }
+
+                    );
+
+                }
+
+            );
+
+        }
+
+    );
+
+}
+
+
+/* ============================================================
+   33. ПОИСК МАРШРУТОВ
+   ============================================================ */
+
+function findRoutesToDestinations(startEdge) {
+
+    const cacheKey =
+        `dest:${startEdge}`;
+
+
+    if (
+        routeCache[cacheKey]
+    ) {
+
+        return routeCache[cacheKey];
+
+    }
+
+
+    const destinations =
+        Object.keys(
+            destinationByEdge
+        );
+
+
+    const result = [];
+
+
+    destinations.forEach(
+
+        function (destinationEdge) {
+
+            const routes =
+                findRoutesToEdge(
+                    startEdge,
+                    destinationEdge
+                );
+
+
+            routes.forEach(
+
+                function (route) {
+
+                    result.push({
+
+                        destinationEdge,
+
+                        segments:
+                            route.segments
+
+                    });
+
+                }
+
+            );
+
+        }
+
+    );
+
+
+    routeCache[cacheKey] =
+        result;
+
+
+    return result;
+
+}
+
+
+/* ============================================================
+   34. ПОИСК ПУТИ МЕЖДУ EDGE
+   ============================================================ */
+
+function findRoutesToEdge(
+    startEdge,
+    destinationEdge
+) {
+
+    const cacheKey =
+        `${startEdge}->${destinationEdge}`;
+
+
+    if (
+        routeCache[cacheKey]
+    ) {
+
+        return routeCache[cacheKey];
+
+    }
+
+
+    if (
+        startEdge ===
+        destinationEdge
+    ) {
+
+        return [
+
+            {
+
+                segments: []
+
+            }
+
+        ];
+
+    }
+
+
+    const results = [];
+
+
+    const visited =
+        new Set();
+
+
+    function dfs(
+        current,
+        path,
+        depth
+    ) {
+
+        if (
+            depth > 200
+        ) {
+
+            return;
+
+        }
+
+
+        if (
+            current ===
+            destinationEdge
+        ) {
+
+            results.push({
+
+                segments:
+                    path.map(
+
+                        function (item, index) {
+
+                            return {
+
+                                from:
+                                    item.from,
+
+                                to:
+                                    item.to,
+
+                                progress:
+                                    index /
+                                    Math.max(
+                                        1,
+                                        path.length
+                                    )
+
+                            };
+
+                        }
+
+                    )
+
+            });
+
+
+            return;
+
+        }
+
+
+        if (
+            visited.has(current)
+        ) {
+
+            return;
+
+        }
+
+
+        visited.add(current);
+
+
+        const nextEdges =
+            graph[current] || [];
+
+
+        nextEdges.forEach(
+
+            function (next) {
+
+                if (
+                    !nodes[next]
+                ) {
+
+                    return;
+
+                }
+
+
+                dfs(
+
+                    next,
+
+                    path.concat({
+
+                        from:
+                            current,
+
+                        to:
+                            next
+
+                    }),
+
+                    depth + 1
+
+                );
+
+            }
+
+        );
+
+
+        visited.delete(
+            current
+        );
+
+    }
+
+
+    dfs(
+        startEdge,
+        [],
+        0
+    );
+
+
+    routeCache[cacheKey] =
+        results;
+
+
+    return results;
+
+}
+
+
+/* ============================================================
+   35. DRAW FLOWS
    ============================================================ */
 
 function drawFlows() {
 
     flowsLayer.clearLayers();
 
+    clearAntPaths();
 
-    drawSegmentCollection(
+
+    const allSegments =
         outgoingSegments
-    );
+            .concat(
+                incomingSegments
+            );
 
 
-    drawSegmentCollection(
-        incomingSegments
+    const grouped =
+        groupSegments(
+            allSegments
+        );
+
+
+    grouped.forEach(
+
+        function (collection) {
+
+            drawSegmentCollection(
+                collection
+            );
+
+        }
+
     );
 
 
     /*
-     * Если анимация уже включена,
-     * полностью пересоздаём штрихи
-     * для нового года.
-     *
-     * Сама animationRunning остаётся true.
-     */
+       Создаём анимационные ant-path
+       только если анимация включена.
+    */
 
     if (animationRunning) {
 
-        createAnimationStrokes();
+        createAntPaths();
 
     }
 
@@ -3013,20 +2729,85 @@ function drawFlows() {
 
 
 /* ============================================================
-   46. РИСОВАНИЕ СЕГМЕНТОВ
+   36. ГРУППИРОВКА СЕГМЕНТОВ
+   ============================================================ */
+
+function groupSegments(segments) {
+
+    const groups = {};
+
+
+    segments.forEach(
+
+        function (segment) {
+
+            const key =
+                [
+
+                    segment.source,
+
+                    segment.destination,
+
+                    segment.type
+
+                ].join("|");
+
+
+            if (!groups[key]) {
+
+                groups[key] = {
+
+                    source:
+                        segment.source,
+
+                    destination:
+                        segment.destination,
+
+                    type:
+                        segment.type,
+
+                    value:
+                        segment.value,
+
+                    segments:
+                        []
+
+                };
+
+            }
+
+
+            groups[key]
+                .segments
+                .push(segment);
+
+        }
+
+    );
+
+
+    return Object.values(groups);
+
+}
+
+
+/* ============================================================
+   37. ОТРИСОВКА ГРУППЫ
    ============================================================ */
 
 function drawSegmentCollection(
     collection
 ) {
 
-    collection.forEach(
+    collection.segments.forEach(
+
         function (segment) {
 
             const from =
                 getNodePoint(
                     segment.from
                 );
+
 
             const to =
                 getNodePoint(
@@ -3035,8 +2816,30 @@ function drawSegmentCollection(
 
 
             if (!from || !to) {
+
                 return;
+
             }
+
+
+            const progress =
+                segment.progress || 0;
+
+
+            const color =
+                getFlowColor(
+
+                    collection.type,
+
+                    progress
+
+                );
+
+
+            const width =
+                getFlowWidth(
+                    collection.value
+                );
 
 
             const points =
@@ -3046,254 +2849,522 @@ function drawSegmentCollection(
                 );
 
 
-            const width =
-                getFlowWidth(
-                    segment.value
-                );
+            L.polyline(
 
+                points,
 
-            const startT =
-                Number.isFinite(
-                    segment.progressStart
-                )
-                    ? segment.progressStart
-                    : 0;
+                {
 
+                    color,
 
-            const endT =
-                Number.isFinite(
-                    segment.progressEnd
-                )
-                    ? segment.progressEnd
-                    : 1;
+                    weight:
+                        width,
 
+                    opacity:
+                        SETTINGS.flowOpacity,
 
-            /*
-             * Делим каждый геометрический
-             * сегмент на маленькие части.
-             *
-             * Благодаря этому получается
-             * плавный переход цвета.
-             */
+                    lineCap:
+                        "round",
 
-            for (
-                let i = 0;
-                i < points.length - 1;
-                i++
-            ) {
+                    lineJoin:
+                        "round",
 
-                const localT =
-                    (
-                        i + 0.5
-                    ) /
-                    (
-                        points.length - 1
-                    );
+                    interactive:
+                        false
 
+                }
 
-                const routeT =
-                    startT +
-                    (
-                        endT -
-                        startT
-                    ) *
-                    localT;
-
-
-                const color =
-                    getFlowColor(
-                        segment.type,
-                        routeT
-                    );
-
-
-                const line =
-                    L.polyline(
-                        [
-                            points[i],
-                            points[i + 1]
-                        ],
-                        {
-
-                            color,
-
-                            weight:
-                                width,
-
-                            opacity:
-                                SETTINGS.flowOpacity,
-
-                            lineCap:
-                                "round",
-
-                            lineJoin:
-                                "round",
-
-                            /*
-                             * Поток кликабельный,
-                             * но НЕ имеет tooltip.
-                             */
-
-                            interactive:
-                                true
-
-                        }
-                    );
-
-
-                /*
-                 * Никакого bindTooltip /
-                 * bindPopup здесь нет.
-                 */
-
-                line.on(
-                    "click",
-                    function (event) {
-
-                        L.DomEvent
-                            .stopPropagation(
-                                event
-                            );
-
-                    }
-                );
-
-
-                line.addTo(
-                    flowsLayer
-                );
-
-            }
+            ).addTo(
+                flowsLayer
+            );
 
         }
+
     );
 
 }
 
 
 /* ============================================================
-   47. ЦВЕТ ПОТОКА
+   38. LEAFLET-ANT-PATH
    ============================================================ */
 
-function getFlowColor(
-    type,
-    t
-) {
+function createAntPaths() {
 
-    t =
-        Math.max(
-            0,
-            Math.min(
-                1,
-                t
-            )
+    clearAntPaths();
+
+
+    const allSegments =
+        outgoingSegments
+            .concat(
+                incomingSegments
+            );
+
+
+    const grouped =
+        groupSegments(
+            allSegments
         );
 
 
-    if (
-        type === "outgoing"
-    ) {
+    grouped.forEach(
 
-        /*
-         * Исходящий:
-         *
-         * красный → фиолетовый
-         */
+        function (collection) {
 
-        return interpolateColor(
-            SETTINGS.outgoingColor,
-            SETTINGS.transitionColor,
-            t
+            collection.segments
+                .forEach(
+
+                    function (segment) {
+
+                        const from =
+                            getNodePoint(
+                                segment.from
+                            );
+
+
+                        const to =
+                            getNodePoint(
+                                segment.to
+                            );
+
+
+                        if (
+                            !from ||
+                            !to
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        const progress =
+                            segment.progress || 0;
+
+
+                        const color =
+                            getFlowColor(
+
+                                collection.type,
+
+                                progress
+
+                            );
+
+
+                        const width =
+                            getFlowWidth(
+                                collection.value
+                            );
+
+
+                        const points =
+                            createSmoothPath(
+                                from,
+                                to
+                            );
+
+
+                        if (
+                            !points ||
+                            points.length < 2
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        /*
+                           Основная анимационная линия.
+                           leaflet-ant-path автоматически
+                           двигает пунктир вдоль линии.
+                        */
+
+                        const antPath =
+                            L.polyline.antPath(
+
+                                points,
+
+                                {
+
+                                    delay:
+                                        SETTINGS.antPathDelay,
+
+                                    dashArray:
+                                        SETTINGS.antPathDashArray,
+
+                                    weight:
+                                        Math.max(
+                                            1.5,
+                                            width * 0.62
+                                        ),
+
+                                    color,
+
+                                    pulseColor:
+                                        SETTINGS.antPathPulseColor,
+
+                                    opacity:
+                                        SETTINGS.animationOpacity,
+
+                                    paused:
+                                        !animationRunning,
+
+                                    reverse:
+                                        false,
+
+                                    hardwareAccelerated:
+                                        SETTINGS.antPathHardwareAccelerated,
+
+                                    interactive:
+                                        false
+
+                                }
+
+                            );
+
+
+                        antPath.addTo(
+                            animationLayer
+                        );
+
+
+                        antPaths.push(
+                            antPath
+                        );
+
+                    }
+
+                );
+
+        }
+
+    );
+
+}
+
+
+/* ============================================================
+   39. ОЧИСТКА ANT-PATH
+   ============================================================ */
+
+function clearAntPaths() {
+
+    antPaths.forEach(
+
+        function (path) {
+
+            try {
+
+                path.pause();
+
+            }
+
+            catch (error) {
+
+                /* ничего */
+
+            }
+
+
+            try {
+
+                animationLayer.removeLayer(
+                    path
+                );
+
+            }
+
+            catch (error) {
+
+                /* ничего */
+
+            }
+
+        }
+
+    );
+
+
+    antPaths = [];
+
+}
+
+
+/* ============================================================
+   40. ЗАПУСК АНИМАЦИИ
+   ============================================================ */
+
+function startFlowAnimation() {
+
+    animationRunning = true;
+
+
+    if (!antPaths.length) {
+
+        createAntPaths();
+
+    }
+
+
+    else {
+
+        antPaths.forEach(
+
+            function (path) {
+
+                try {
+
+                    path.resume();
+
+                }
+
+                catch (error) {
+
+                    console.warn(
+                        error
+                    );
+
+                }
+
+            }
+
         );
 
     }
 
 
-    /*
-     * Входящий:
-     *
-     * фиолетовый → синий
-     */
-
-    return interpolateColor(
-        SETTINGS.transitionColor,
-        SETTINGS.incomingColor,
-        t
-    );
+    updateAnimationButton();
 
 }
 
 
 /* ============================================================
-   48. ИНТЕРПОЛЯЦИЯ ЦВЕТА
+   41. ОСТАНОВКА АНИМАЦИИ
+   ============================================================ */
+
+function stopFlowAnimation() {
+
+    animationRunning = false;
+
+
+    antPaths.forEach(
+
+        function (path) {
+
+            try {
+
+                path.pause();
+
+            }
+
+            catch (error) {
+
+                console.warn(
+                    error
+                );
+
+            }
+
+        }
+
+    );
+
+
+    updateAnimationButton();
+
+}
+
+
+/* ============================================================
+   42. КНОПКА АНИМАЦИИ
+   ============================================================ */
+
+function updateAnimationButton() {
+
+    const button =
+        document.getElementById(
+            "animationToggle"
+        );
+
+
+    if (!button) {
+
+        return;
+
+    }
+
+
+    if (animationRunning) {
+
+        button.textContent =
+            "❚❚ Остановить потоки";
+
+    }
+
+    else {
+
+        button.textContent =
+            "▶ Запустить потоки";
+
+    }
+
+}
+
+
+/* ============================================================
+   43. ЦВЕТ ПОТОКА
+   ============================================================ */
+
+function getFlowColor(
+    type,
+    progress
+) {
+
+    if (
+        type === "outgoing"
+    ) {
+
+        return interpolateColor(
+
+            SETTINGS.outgoingColor,
+
+            SETTINGS.transitionColor,
+
+            progress
+
+        );
+
+    }
+
+
+    if (
+        type === "incoming"
+    ) {
+
+        return interpolateColor(
+
+            SETTINGS.transitionColor,
+
+            SETTINGS.incomingColor,
+
+            progress
+
+        );
+
+    }
+
+
+    return SETTINGS.transitionColor;
+
+}
+
+
+/* ============================================================
+   44. ИНТЕРПОЛЯЦИЯ ЦВЕТА
    ============================================================ */
 
 function interpolateColor(
     color1,
     color2,
-    t
+    amount
 ) {
 
-    const a =
+    amount =
+        Math.max(
+            0,
+            Math.min(
+                1,
+                amount
+            )
+        );
+
+
+    const c1 =
         hexToRgb(color1);
 
-    const b =
+
+    const c2 =
         hexToRgb(color2);
 
 
-    return `rgb(
-        ${Math.round(
-            a.r +
-            (b.r - a.r) * t
-        )},
-        ${Math.round(
-            a.g +
-            (b.g - a.g) * t
-        )},
-        ${Math.round(
-            a.b +
-            (b.b - a.b) * t
-        )}
-    )`;
+    if (!c1 || !c2) {
+
+        return color1;
+
+    }
+
+
+    const r =
+        Math.round(
+            c1.r +
+            (
+                c2.r - c1.r
+            ) * amount
+        );
+
+
+    const g =
+        Math.round(
+            c1.g +
+            (
+                c2.g - c1.g
+            ) * amount
+        );
+
+
+    const b =
+        Math.round(
+            c1.b +
+            (
+                c2.b - c1.b
+            ) * amount
+        );
+
+
+    return `rgb(${r},${g},${b})`;
 
 }
 
+
+/* ============================================================
+   45. HEX → RGB
+   ============================================================ */
 
 function hexToRgb(hex) {
 
     const value =
         String(hex)
-        .replace("#", "");
+            .replace("#", "");
 
 
-    const normalized =
-        value.length === 3
-            ? value
-                .split("")
-                .map(
-                    x => x + x
-                )
-                .join("")
-            : value;
+    if (
+        value.length !== 6
+    ) {
+
+        return null;
+
+    }
 
 
     return {
 
         r:
             parseInt(
-                normalized.substring(0, 2),
+                value.substring(0, 2),
                 16
             ),
 
         g:
             parseInt(
-                normalized.substring(2, 4),
+                value.substring(2, 4),
                 16
             ),
 
         b:
             parseInt(
-                normalized.substring(4, 6),
+                value.substring(4, 6),
                 16
             )
 
@@ -3303,25 +3374,136 @@ function hexToRgb(hex) {
 
 
 /* ============================================================
-   49. КООРДИНАТЫ УЗЛА
+   46. ТОЛЩИНА ПОТОКА
    ============================================================ */
 
-function getNodePoint(id) {
+function getFlowWidth(value) {
 
-    const node =
-        nodes[id];
-
-
-    if (!node) {
-        return null;
-    }
+    const number =
+        Math.max(
+            0,
+            Number(value) || 0
+        );
 
 
     /*
-     * Leaflet:
-     *
-     * [latitude, longitude]
-     */
+       Логарифмическое масштабирование,
+       чтобы большие потоки не "съедали"
+       все остальные.
+    */
+
+    const maxValue =
+        getMaxMigrationValue();
+
+
+    if (
+        maxValue <= 0
+    ) {
+
+        return SETTINGS.minFlowWidth;
+
+    }
+
+
+    const normalized =
+        Math.log1p(number) /
+        Math.log1p(maxValue);
+
+
+    return (
+
+        SETTINGS.minFlowWidth +
+
+        (
+
+            SETTINGS.maxFlowWidth -
+            SETTINGS.minFlowWidth
+
+        ) *
+
+        normalized
+
+    );
+
+}
+
+
+/* ============================================================
+   47. МАКСИМАЛЬНАЯ МИГРАЦИЯ
+   ============================================================ */
+
+function getMaxMigrationValue() {
+
+    let max = 0;
+
+
+    migrationFrom.forEach(
+
+        function (item) {
+
+            YEARS.forEach(
+
+                function (year) {
+
+                    max =
+                        Math.max(
+                            max,
+                            item.years[year] || 0
+                        );
+
+                }
+
+            );
+
+        }
+
+    );
+
+
+    migrationTo.forEach(
+
+        function (item) {
+
+            YEARS.forEach(
+
+                function (year) {
+
+                    max =
+                        Math.max(
+                            max,
+                            item.years[year] || 0
+                        );
+
+                }
+
+            );
+
+        }
+
+    );
+
+
+    return max;
+
+}
+
+
+/* ============================================================
+   48. ТОЧКА УЗЛА
+   ============================================================ */
+
+function getNodePoint(edge) {
+
+    const node =
+        nodes[edge];
+
+
+    if (!node) {
+
+        return null;
+
+    }
+
 
     return [
         node.lat,
@@ -3332,36 +3514,7 @@ function getNodePoint(id) {
 
 
 /* ============================================================
-   50. ТОЛЩИНА ПОТОКА
-   ============================================================ */
-
-function getFlowWidth(
-    value
-) {
-
-    if (value <= 0) {
-        return SETTINGS.minFlowWidth;
-    }
-
-
-    const width =
-        SETTINGS.minFlowWidth +
-        Math.log10(
-            value + 1
-        ) *
-        3.3;
-
-
-    return Math.min(
-        SETTINGS.maxFlowWidth,
-        width
-    );
-
-}
-
-
-/* ============================================================
-   51. ПЛАВНАЯ КРИВАЯ
+   49. ПЛАВНЫЙ ПУТЬ
    ============================================================ */
 
 function createSmoothPath(
@@ -3369,59 +3522,90 @@ function createSmoothPath(
     to
 ) {
 
+    if (
+        !from ||
+        !to
+    ) {
+
+        return [];
+
+    }
+
+
     const lat1 =
         from[0];
+
 
     const lon1 =
         from[1];
 
+
     const lat2 =
         to[0];
+
 
     const lon2 =
         to[1];
 
 
-    const midLat =
-        (
-            lat1 +
-            lat2
-        ) / 2;
+    const dLat =
+        lat2 - lat1;
 
 
-    const midLon =
-        (
-            lon1 +
-            lon2
-        ) / 2;
+    const dLon =
+        lon2 - lon1;
 
 
     const distance =
         Math.sqrt(
-            Math.pow(
-                lat2 - lat1,
-                2
-            ) +
-            Math.pow(
-                lon2 - lon1,
-                2
-            )
+            dLat * dLat +
+            dLon * dLon
         );
 
 
-    /*
-     * Контрольная точка
-     * создаёт лёгкую дугу.
-     */
+    if (
+        distance === 0
+    ) {
 
-    const controlLat =
-        midLat +
+        return [
+            from,
+            to
+        ];
+
+    }
+
+
+    /*
+       Перпендикуляр к направлению.
+    */
+
+    const nx =
+        -dLat / distance;
+
+
+    const ny =
+        dLon / distance;
+
+
+    const bend =
         distance *
         SETTINGS.curveFactor;
 
 
+    const controlLat =
+        (
+            lat1 +
+            lat2
+        ) / 2 +
+        nx * bend;
+
+
     const controlLon =
-        midLon;
+        (
+            lon1 +
+            lon2
+        ) / 2 +
+        ny * bend;
 
 
     const points = [];
@@ -3437,20 +3621,44 @@ function createSmoothPath(
             i /
             SETTINGS.curveSteps;
 
-        const mt =
+
+        const oneMinusT =
             1 - t;
 
 
+        const lat =
+            oneMinusT *
+                oneMinusT *
+                lat1 +
+
+            2 *
+                oneMinusT *
+                t *
+                controlLat +
+
+            t *
+                t *
+                lat2;
+
+
+        const lon =
+            oneMinusT *
+                oneMinusT *
+                lon1 +
+
+            2 *
+                oneMinusT *
+                t *
+                controlLon +
+
+            t *
+                t *
+                lon2;
+
+
         points.push([
-
-            mt * mt * lat1 +
-            2 * mt * t * controlLat +
-            t * t * lat2,
-
-            mt * mt * lon1 +
-            2 * mt * t * controlLon +
-            t * t * lon2
-
+            lat,
+            lon
         ]);
 
     }
@@ -3462,504 +3670,309 @@ function createSmoothPath(
 
 
 /* ============================================================
-   52. АНИМАЦИЯ
+   50. ВЫБОР РЕГИОНА
    ============================================================ */
 
-function startFlowAnimation() {
+function selectRegion(name) {
 
-    if (animationRunning) {
-        return;
-    }
+    selectedRegion =
+        name;
 
 
-    animationRunning =
-        true;
+    selectedSourceNames =
+        new Set();
 
 
-    createAnimationStrokes();
+    selectedDestinationNames =
+        new Set();
 
 
-    if (!animationFrame) {
-
-        animationFrame =
-            requestAnimationFrame(
-                animateFlowStrokes
-            );
-
-    }
-
-
-    updateAnimationButton();
-
-}
-
-
-function stopFlowAnimation() {
-
-    animationRunning =
-        false;
-
-
-    if (animationFrame) {
-
-        cancelAnimationFrame(
-            animationFrame
-        );
-
-        animationFrame = null;
-
-    }
-
-
-    clearAnimationStrokes();
-
-    updateAnimationButton();
-
-}
-
-
-function createAnimationStrokes() {
-
-    clearAnimationStrokes();
-
-
-    const allSegments = [
-
-        ...outgoingSegments,
-
-        ...incomingSegments
-
-    ];
-
-
-    allSegments.forEach(
-        function (segment) {
-
-            const from =
-                getNodePoint(
-                    segment.from
-                );
-
-            const to =
-                getNodePoint(
-                    segment.to
-                );
-
-
-            if (!from || !to) {
-                return;
-            }
-
-
-            const points =
-                createSmoothPath(
-                    from,
-                    to
-                );
-
-
-            const count =
-                getStrokeCount(
-                    segment.value
-                );
-
-
-            const startT =
-                Number.isFinite(
-                    segment.progressStart
-                )
-                    ? segment.progressStart
-                    : 0;
-
-
-            const endT =
-                Number.isFinite(
-                    segment.progressEnd
-                )
-                    ? segment.progressEnd
-                    : 1;
-
-
-            for (
-                let i = 0;
-                i < count;
-                i++
-            ) {
-
-                const initialProgress =
-                    i / count;
-
-
-                const marker =
-                    L.polyline(
-                        [
-                            points[0],
-                            points[0]
-                        ],
-                        {
-
-                            color:
-                                getFlowColor(
-                                    segment.type,
-                                    startT
-                                ),
-
-                            weight:
-                                SETTINGS.animationWidth,
-
-                            opacity:
-                                SETTINGS.animationOpacity,
-
-                            lineCap:
-                                "round",
-
-                            lineJoin:
-                                "round",
-
-                            /*
-                             * Анимационные штрихи
-                             * полностью неинтерактивны.
-                             *
-                             * Поэтому при наведении
-                             * ничего не появляется.
-                             */
-
-                            interactive:
-                                false
-
-                        }
-                    );
-
-
-                marker.addTo(
-                    animationLayer
-                );
-
-
-                animationStrokes.push({
-
-                    points,
-
-                    progress:
-                        initialProgress,
-
-                    speed:
-                        getStrokeSpeed(
-                            segment.value
-                        ),
-
-                    marker,
-
-                    type:
-                        segment.type,
-
-                    progressStart:
-                        startT,
-
-                    progressEnd:
-                        endT
-
-                });
-
-            }
-
-        }
-    );
-
-}
-
-
-/* ============================================================
-   53. КОЛИЧЕСТВО ШТРИХОВ
-   ============================================================ */
-
-function getStrokeCount(
-    value
-) {
-
-    return Math.max(
-
-        SETTINGS.minStrokes,
-
-        Math.min(
-
-            SETTINGS.maxStrokes,
-
-            Math.round(
-                Math.log10(
-                    value + 1
-                )
-            )
-
-        )
-
-    );
-
-}
-
-
-/* ============================================================
-   54. СКОРОСТЬ
-   ============================================================ */
-
-function getStrokeSpeed(
-    value
-) {
-
-    /*
-     * Скорость увеличена.
-     *
-     * Большие потоки немного быстрее,
-     * чтобы движение было заметнее.
-     */
-
-    const multiplier =
-        0.9 +
-        Math.min(
-            1.8,
-            Math.log10(
-                value + 1
-            ) / 4
+    const source =
+        migrationFrom.find(
+            item =>
+                item.name === name
         );
 
 
-    return (
-        SETTINGS.animationSpeed *
-        multiplier
-    );
-
-}
-
-
-/* ============================================================
-   55. ОЧИСТКА АНИМАЦИИ
-   ============================================================ */
-
-function clearAnimationStrokes() {
-
-    animationLayer.clearLayers();
-
-    animationStrokes = [];
-
-}
+    const destination =
+        migrationTo.find(
+            item =>
+                item.name === name
+        );
 
 
-/* ============================================================
-   56. ЦИКЛ АНИМАЦИИ
-   ============================================================ */
+    if (source) {
 
-function animateFlowStrokes(
-    timestamp
-) {
+        selectedRegionRole =
+            "source";
 
-    if (!animationRunning) {
 
-        animationFrame = null;
+        migrationFrom.forEach(
 
-        return;
+            function (item) {
+
+                if (
+                    item.years[currentYear] >
+                    0
+                ) {
+
+                    selectedSourceNames
+                        .add(item.name);
+
+                }
+
+            }
+
+        );
 
     }
 
 
-    animationStrokes.forEach(
-        function (stroke) {
+    else if (destination) {
 
-            stroke.progress +=
-                stroke.speed;
-
-
-            if (
-                stroke.progress >= 1
-            ) {
-
-                stroke.progress -= 1;
-
-            }
+        selectedRegionRole =
+            "destination";
 
 
-            let startProgress =
-                stroke.progress -
-                SETTINGS.strokeLength;
+        migrationTo.forEach(
 
+            function (item) {
 
-            if (
-                startProgress < 0
-            ) {
+                if (
+                    item.years[currentYear] >
+                    0
+                ) {
 
-                startProgress += 1;
+                    selectedDestinationNames
+                        .add(item.name);
+
+                }
 
             }
 
+        );
 
-            const start =
-                getPositionOnPath(
-                    stroke.points,
-                    startProgress
-                );
+    }
 
 
-            const end =
-                getPositionOnPath(
-                    stroke.points,
-                    stroke.progress
-                );
+    updateRegionStyles();
+
+}
 
 
-            if (
-                start &&
-                end
-            ) {
+/* ============================================================
+   51. СБРОС ВЫДЕЛЕНИЯ
+   ============================================================ */
 
-                stroke.marker.setLatLngs([
-                    start,
-                    end
-                ]);
+function clearRegionSelection() {
 
-
-                const t =
-                    stroke.progressStart +
-                    (
-                        stroke.progressEnd -
-                        stroke.progressStart
-                    ) *
-                    stroke.progress;
+    selectedRegion =
+        null;
 
 
-                stroke.marker.setStyle({
+    selectedRegionRole =
+        null;
+
+
+    selectedSourceNames =
+        new Set();
+
+
+    selectedDestinationNames =
+        new Set();
+
+
+    updateRegionStyles();
+
+}
+
+
+/* ============================================================
+   52. СТИЛИ РЕГИОНОВ
+   ============================================================ */
+
+function updateRegionStyles() {
+
+    Object.keys(regionLayers)
+        .forEach(
+
+            function (name) {
+
+                const layer =
+                    regionLayers[name];
+
+
+                let fillColor =
+                    SETTINGS.regionFillColor;
+
+
+                let fillOpacity =
+                    SETTINGS.regionFillOpacity;
+
+
+                if (
+                    selectedRegionRole ===
+                    "source" &&
+                    selectedSourceNames
+                        .has(name)
+                ) {
+
+                    fillColor =
+                        SETTINGS.selectedSourceColor;
+
+                    fillOpacity =
+                        SETTINGS.selectedSourceOpacity;
+
+                }
+
+
+                if (
+                    selectedRegionRole ===
+                    "destination" &&
+                    selectedDestinationNames
+                        .has(name)
+                ) {
+
+                    fillColor =
+                        SETTINGS.selectedDestinationColor;
+
+                    fillOpacity =
+                        SETTINGS.selectedDestinationOpacity;
+
+                }
+
+
+                layer.setStyle({
 
                     color:
-                        getFlowColor(
-                            stroke.type,
-                            t
-                        )
+                        SETTINGS.regionBorderColor,
+
+                    weight:
+                        0.8,
+
+                    fillColor,
+
+                    fillOpacity
 
                 });
 
             }
 
-        }
+        );
+
+}
+
+
+/* ============================================================
+   53. ГОД
+   ============================================================ */
+
+function setYear(year) {
+
+    if (
+        !YEARS.includes(year)
+    ) {
+
+        return;
+
+    }
+
+
+    currentYear =
+        year;
+
+
+    /*
+       ВАЖНО:
+       animationRunning НЕ меняем.
+
+       Поэтому переключение года
+       не выключает анимацию.
+    */
+
+    calculateSegmentsForYear(
+        currentYear
     );
 
 
-    animationFrame =
-        requestAnimationFrame(
-            animateFlowStrokes
-        );
+    drawFlows();
+
+
+    updateYearInterface();
+
+
+    updateTables();
+
+
+    updateRegionStyles();
 
 }
 
 
 /* ============================================================
-   57. ТОЧКА НА КРИВОЙ
+   54. ИНТЕРФЕЙС ГОДА
    ============================================================ */
 
-function getPositionOnPath(
-    points,
-    progress
-) {
+function updateYearInterface() {
 
-    if (
-        !points ||
-        points.length < 2
-    ) {
-        return null;
-    }
-
-
-    progress =
-        Math.max(
-            0,
-            Math.min(
-                1,
-                progress
-            )
-        );
-
-
-    const position =
-        progress *
-        (
-            points.length - 1
-        );
-
-
-    const index =
-        Math.floor(
-            position
-        );
-
-
-    const local =
-        position -
-        index;
-
-
-    const p1 =
-        points[
-            Math.min(
-                index,
-                points.length - 1
-            )
-        ];
-
-
-    const p2 =
-        points[
-            Math.min(
-                index + 1,
-                points.length - 1
-            )
-        ];
-
-
-    return [
-
-        p1[0] +
-        (
-            p2[0] -
-            p1[0]
-        ) *
-        local,
-
-        p1[1] +
-        (
-            p2[1] -
-            p1[1]
-        ) *
-        local
-
-    ];
-
-}
-
-
-/* ============================================================
-   58. КНОПКА АНИМАЦИИ
-   ============================================================ */
-
-function updateAnimationButton() {
-
-    const button =
+    const slider =
         document.getElementById(
-            "animationToggle"
+            "yearSlider"
         );
 
 
-    if (!button) {
-        return;
+    const label =
+        document.getElementById(
+            "yearLabel"
+        );
+
+
+    if (slider) {
+
+        slider.value =
+            currentYear;
+
     }
 
 
-    button.textContent =
-        animationRunning
-            ? "⏸ Остановить потоки"
-            : "▶ Запустить потоки";
+    if (label) {
+
+        label.textContent =
+            currentYear;
+
+    }
+
+
+    document
+        .querySelectorAll(
+            ".yearButton"
+        )
+        .forEach(
+
+            function (button) {
+
+                button.classList.toggle(
+
+                    "active",
+
+                    Number(
+                        button.dataset.year
+                    ) === currentYear
+
+                );
+
+            }
+
+        );
+
+
+    updateAnimationButton();
 
 }
 
 
 /* ============================================================
-   59. ТАБЛИЦЫ
+   55. ТАБЛИЦЫ
    ============================================================ */
 
 function toggleTables() {
@@ -3974,14 +3987,10 @@ function toggleTables() {
         );
 
 
-    const button =
-        document.getElementById(
-            "tablesToggle"
-        );
-
-
     if (!container) {
+
         return;
+
     }
 
 
@@ -3989,16 +3998,6 @@ function toggleTables() {
         tablesVisible
             ? "flex"
             : "none";
-
-
-    if (button) {
-
-        button.textContent =
-            tablesVisible
-                ? "Скрыть таблицы"
-                : "Таблицы";
-
-    }
 
 
     if (tablesVisible) {
@@ -4011,184 +4010,93 @@ function toggleTables() {
 
 
 /* ============================================================
-   60. ТАБЛИЦЫ
+   56. ОБНОВЛЕНИЕ ТАБЛИЦ
    ============================================================ */
 
 function updateTables() {
 
     if (!tablesVisible) {
+
         return;
+
     }
 
 
-    createSourceTable();
-
-    createDestinationTable();
-
-}
-
-
-/* ============================================================
-   61. ТАБЛИЦА ИСХОДА
-   ============================================================ */
-
-function createSourceTable() {
-
-    const container =
+    const sourceContainer =
         document.getElementById(
             "sourceTable"
         );
 
 
-    if (!container) {
-        return;
-    }
-
-
-    const rows =
-        migrationFrom
-            .map(
-                function (item) {
-
-                    return {
-
-                        name:
-                            item.origin,
-
-                        value:
-                            item.values[
-                                currentYear
-                            ] || 0
-
-                    };
-
-                }
-            )
-            .filter(
-                item =>
-                    item.value > 0
-            )
-            .sort(
-                function (a, b) {
-
-                    return (
-                        b.value -
-                        a.value
-                    );
-
-                }
-            );
-
-
-    let html = `
-
-        <table class="migration-table">
-
-            <thead>
-
-                <tr>
-                    <th>Регион</th>
-                    <th>Переселенцев</th>
-                </tr>
-
-            </thead>
-
-            <tbody>
-
-    `;
-
-
-    rows.forEach(
-        function (row) {
-
-            html += `
-
-                <tr>
-
-                    <td>
-                        ${escapeHTML(
-                            row.name
-                        )}
-                    </td>
-
-                    <td>
-                        ${formatNumber(
-                            row.value
-                        )}
-                    </td>
-
-                </tr>
-
-            `;
-
-        }
-    );
-
-
-    html += `
-
-            </tbody>
-
-        </table>
-
-    `;
-
-
-    container.innerHTML =
-        html;
-
-}
-
-
-/* ============================================================
-   62. ТАБЛИЦА ПРИБЫТИЯ
-   ============================================================ */
-
-function createDestinationTable() {
-
-    const container =
+    const destinationContainer =
         document.getElementById(
             "destinationTable"
         );
 
 
-    if (!container) {
+    if (
+        !sourceContainer ||
+        !destinationContainer
+    ) {
+
         return;
+
+    }
+
+
+    sourceContainer.innerHTML =
+        createMigrationTable(
+            migrationFrom,
+            currentYear
+        );
+
+
+    destinationContainer.innerHTML =
+        createMigrationTable(
+            migrationTo,
+            currentYear
+        );
+
+}
+
+
+/* ============================================================
+   57. HTML ТАБЛИЦЫ
+   ============================================================ */
+
+function createMigrationTable(
+    data,
+    year
+) {
+
+    if (!data.length) {
+
+        return "<p>Нет данных</p>";
+
     }
 
 
     const rows =
-        migrationTo
-            .map(
-                function (item) {
-
-                    return {
-
-                        name:
-                            item.destination,
-
-                        value:
-                            item.values[
-                                currentYear
-                            ] || 0
-
-                    };
-
-                }
-            )
-            .filter(
-                item =>
-                    item.value > 0
-            )
+        data
+            .slice()
             .sort(
+
                 function (a, b) {
 
                     return (
-                        b.value -
-                        a.value
+
+                        (
+                            b.years[year] || 0
+                        ) -
+
+                        (
+                            a.years[year] || 0
+                        )
+
                     );
 
                 }
+
             );
 
 
@@ -4199,8 +4107,15 @@ function createDestinationTable() {
             <thead>
 
                 <tr>
-                    <th>Регион</th>
-                    <th>Переселенцев</th>
+
+                    <th>
+                        Регион
+                    </th>
+
+                    <th>
+                        ${year}
+                    </th>
+
                 </tr>
 
             </thead>
@@ -4211,21 +4126,22 @@ function createDestinationTable() {
 
 
     rows.forEach(
-        function (row) {
+
+        function (item) {
 
             html += `
 
                 <tr>
 
                     <td>
-                        ${escapeHTML(
-                            row.name
+                        ${escapeHtml(
+                            item.name
                         )}
                     </td>
 
                     <td>
                         ${formatNumber(
-                            row.value
+                            item.years[year]
                         )}
                     </td>
 
@@ -4234,6 +4150,7 @@ function createDestinationTable() {
             `;
 
         }
+
     );
 
 
@@ -4246,243 +4163,121 @@ function createDestinationTable() {
     `;
 
 
-    container.innerHTML =
-        html;
+    return html;
 
 }
 
 
 /* ============================================================
-   63. МАСШТАБ
+   58. ФОРМАТ ЧИСЛА
    ============================================================ */
-
-function fitMapToRegions() {
-
-    if (
-        geojsonData &&
-        geojsonData.features &&
-        geojsonData.features.length
-    ) {
-
-        try {
-
-            const layer =
-                L.geoJSON(
-                    geojsonData
-                );
-
-
-            const bounds =
-                layer.getBounds();
-
-
-            if (
-                bounds.isValid()
-            ) {
-
-                map.fitBounds(
-                    bounds,
-                    {
-                        padding: [
-                            20,
-                            20
-                        ]
-                    }
-                );
-
-                return;
-
-            }
-
-        }
-        catch (error) {
-
-            console.warn(
-                "Ошибка определения границ",
-                error
-            );
-
-        }
-
-    }
-
-
-    const points =
-        Object.values(nodes)
-            .map(
-                function (node) {
-
-                    return [
-                        node.lat,
-                        node.lon
-                    ];
-
-                }
-            );
-
-
-    if (points.length) {
-
-        map.fitBounds(
-            points,
-            {
-                padding: [
-                    30,
-                    30
-                ]
-            }
-        );
-
-    }
-
-}
-
-
-/* ============================================================
-   64. СЛУЖЕБНЫЕ ФУНКЦИИ
-   ============================================================ */
-
-function clean(value) {
-
-    return String(
-        value ?? ""
-    )
-    .replace(
-        /^\uFEFF/,
-        ""
-    )
-    .trim();
-
-}
-
-
-function normalizeName(value) {
-
-    return clean(value)
-        .toLowerCase()
-        .replace(
-            /\s+/g,
-            " "
-        );
-
-}
-
-
-function parseNumber(value) {
-
-    const text =
-        String(
-            value ?? ""
-        )
-        .replace(
-            /\s/g,
-            ""
-        )
-        .replace(
-            ",",
-            "."
-        );
-
-
-    const number =
-        Number(text);
-
-
-    return Number.isFinite(number)
-        ? number
-        : 0;
-
-}
-
-
-function parseCoordinate(value) {
-
-    let text =
-        String(
-            value ?? ""
-        )
-        .trim();
-
-
-    text =
-        text.replace(
-            /^\uFEFF/,
-            ""
-        );
-
-
-    /*
-     * Исправляет координаты вида:
-     *
-     * 48.612383370883187,
-     */
-
-    text =
-        text.replace(
-            /,+$/,
-            ""
-        );
-
-
-    /*
-     * На случай десятичной запятой.
-     */
-
-    text =
-        text.replace(
-            ",",
-            "."
-        );
-
-
-    return parseFloat(text);
-
-}
-
 
 function formatNumber(value) {
 
-    return Math.round(
-        Number(value) || 0
-    )
-    .toLocaleString(
+    const number =
+        Number(value) || 0;
+
+
+    return number.toLocaleString(
         "ru-RU"
     );
 
 }
 
 
-function escapeHTML(text) {
+/* ============================================================
+   59. ЭКРАНИРОВАНИЕ HTML
+   ============================================================ */
 
-    return String(
-        text ?? ""
-    )
-    .replace(
-        /&/g,
-        "&amp;"
-    )
-    .replace(
-        /</g,
-        "&lt;"
-    )
-    .replace(
-        />/g,
-        "&gt;"
-    )
-    .replace(
-        /"/g,
-        "&quot;"
-    )
-    .replace(
-        /'/g,
-        "&#039;"
-    );
+function escapeHtml(value) {
+
+    return String(value ?? "")
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
 
 }
 
 
 /* ============================================================
-   65. ОШИБКА
+   60. FIT MAP
+   ============================================================ */
+
+function fitMapToRegions() {
+
+    if (
+        !geojsonData ||
+        !geojsonData.features ||
+        !geojsonData.features.length
+    ) {
+
+        return;
+
+    }
+
+
+    try {
+
+        const layer =
+            L.geoJSON(
+                geojsonData
+            );
+
+
+        const bounds =
+            layer.getBounds();
+
+
+        if (
+            bounds.isValid()
+        ) {
+
+            map.fitBounds(
+                bounds,
+                {
+
+                    padding:
+                        [20, 20]
+
+                }
+
+            );
+
+        }
+
+    }
+
+    catch (error) {
+
+        console.warn(
+            "Не удалось определить границы карты",
+            error
+        );
+
+    }
+
+}
+
+
+/* ============================================================
+   61. ОШИБКА
    ============================================================ */
 
 function showError(message) {
@@ -4492,67 +4287,76 @@ function showError(message) {
             "migration-error"
         );
 
+
     if (old) {
+
         old.remove();
+
     }
 
 
-    const div =
-        document.createElement(
-            "div"
-        );
+    const error =
+        document.createElement("div");
 
 
-    div.id =
+    error.id =
         "migration-error";
 
 
-    div.style.position =
+    error.style.position =
         "fixed";
 
-    div.style.left =
+
+    error.style.left =
         "50%";
 
-    div.style.top =
+
+    error.style.top =
         "50%";
 
-    div.style.transform =
+
+    error.style.transform =
         "translate(-50%, -50%)";
 
-    div.style.zIndex =
-        "9999";
 
-    div.style.background =
+    error.style.zIndex =
+        "10000";
+
+
+    error.style.background =
         "#fff";
 
-    div.style.padding =
-        "25px";
 
-    div.style.borderRadius =
+    error.style.padding =
+        "20px";
+
+
+    error.style.borderRadius =
         "10px";
 
-    div.style.boxShadow =
-        "0 3px 20px rgba(0,0,0,0.3)";
 
-    div.style.maxWidth =
-        "700px";
+    error.style.boxShadow =
+        "0 5px 25px rgba(0,0,0,.3)";
 
-    div.style.fontFamily =
+
+    error.style.maxWidth =
+        "600px";
+
+
+    error.style.fontFamily =
         "Arial, sans-serif";
 
 
-    div.innerHTML = `
+    error.innerHTML = `
 
-        <h3>
+        <strong>
             Ошибка загрузки карты
-        </h3>
+        </strong>
 
-        <pre
-            style="
-                white-space:pre-wrap;
-                color:#a00;
-            "
-        >${escapeHTML(
+        <pre style="
+            white-space:pre-wrap;
+            margin-top:10px;
+        ">${escapeHtml(
             message
         )}</pre>
 
@@ -4560,7 +4364,7 @@ function showError(message) {
 
 
     document.body.appendChild(
-        div
+        error
     );
 
 }
