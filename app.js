@@ -10,6 +10,59 @@ const CONFIG = {
   }
 };
 
+
+const CHART_COLORS = [
+  '#1f77b4', '#d62728', '#2ca02c', '#9467bd', '#ff7f0e',
+  '#17becf', '#e377c2', '#8c564b', '#bcbd22', '#3366cc'
+];
+const OTHER_COLOR = '#808080';
+
+const pieCalloutPlugin = {
+  id: 'pieCalloutLabels',
+  afterDraw(chart) {
+    if (chart.config.type !== 'pie') return;
+    const ctx = chart.ctx;
+    const meta = chart.getDatasetMeta(0);
+    const data = chart.data.datasets[0].data;
+    const total = data.reduce((a,b) => a + Number(b || 0), 0);
+    if (!total) return;
+
+    ctx.save();
+    ctx.font = '600 12px Arial, sans-serif';
+    ctx.fillStyle = '#222';
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+
+    meta.data.forEach((arc, i) => {
+      const angle = (arc.startAngle + arc.endAngle) / 2;
+      const r = arc.outerRadius;
+      const cx = arc.x, cy = arc.y;
+      const x1 = cx + Math.cos(angle) * r;
+      const y1 = cy + Math.sin(angle) * r;
+      const elbow = r + 18;
+      const x2 = cx + Math.cos(angle) * elbow;
+      const y2 = cy + Math.sin(angle) * elbow;
+      const right = Math.cos(angle) >= 0;
+      const x3 = x2 + (right ? 34 : -34);
+      const y3 = y2;
+
+      const pct = (Number(data[i]) / total * 100).toFixed(1);
+      const label = `${chart.data.labels[i]} (${pct}%)`;
+
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.lineTo(x3, y3);
+      ctx.stroke();
+
+      ctx.textAlign = right ? 'left' : 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, x3 + (right ? 5 : -5), y3);
+    });
+    ctx.restore();
+  }
+};
+
 const DISPLAY_NAME = {
   "Акмолинская": "Акмолинская область",
   "Архангельская": "Архангельская губерния",
@@ -454,18 +507,58 @@ function showTable(kind) {
 }
 
 function showChart(kind) {
-  state.chartKind = kind;
   const list = getAggregatedRows(kind);
-  const top = list.slice(0,10);
-  const other = list.slice(10).reduce((s,r)=>s+r.value,0);
-  const labels = top.map(r=>r.name);
-  const values = top.map(r=>r.value);
-  if (other > 0) { labels.push('другие'); values.push(other); }
+  const top = list.slice(0, 10);
+  const rest = list.slice(10).reduce((sum, r) => sum + r.value, 0);
+  const labels = top.map(r => r.name);
+  const values = top.map(r => r.value);
+
+  if (rest > 0) {
+    labels.push('другие');
+    values.push(rest);
+  }
+
+  const backgroundColor = top.map((_, i) => CHART_COLORS[i]);
+  if (rest > 0) backgroundColor.push(OTHER_COLOR);
+
+  const canvas = document.getElementById('migrationChart');
+  const ctx = canvas.getContext('2d');
   if (state.chart) state.chart.destroy();
-  state.chart = new Chart(document.getElementById('migrationChart'), {
-    type:'pie',
-    data:{labels, datasets:[{data:values}]},
-    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right'}, title:{display:true,text:`${kind==='from'?'Исход':'Водворение'} — ${state.currentYear}`}}}
+
+  state.chart = new Chart(ctx, {
+    type: 'pie',
+    plugins: [pieCalloutPlugin],
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor,
+        borderColor: '#ffffff',
+        borderWidth: 1.5
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: {
+        padding: {top: 42, right: 170, bottom: 42, left: 170}
+      },
+      plugins: {
+        legend: {display: false},
+        title: {
+          display: true,
+          text: `${kind === 'from' ? 'Исход' : 'Водворение'} — ${state.currentYear}`
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const value = Number(context.raw || 0);
+              return `${context.label}: ${value.toLocaleString('ru-RU')} переселенцев`;
+            }
+          }
+        }
+      }
+    }
   });
 }
 
