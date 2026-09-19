@@ -316,6 +316,23 @@ function calculateFlows(year) {
   return { flow };
 }
 
+function namesForSegment(a, b) {
+  const names = new Set();
+
+  for (const node of [a, b]) {
+    const set = state.regionByNode.get(node);
+    if (!set) continue;
+    for (const raw of set) {
+      const key = String(raw).trim();
+      if (key && key !== 'ВСЕГО') {
+        names.add(DISPLAY_NAME[key] || key);
+      }
+    }
+  }
+
+  return [...names];
+}
+
 function weightFor(value, max) {
   if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(max) || max <= 0) return 0;
   // Небольшие потоки остаются тонкими, крупные заметно толще.
