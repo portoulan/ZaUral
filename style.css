@@ -69,7 +69,7 @@ th { position:sticky; top:0; background:#f7f8f9; z-index:1; }
 .actions button, .table-tabs button, .chart-tabs button { flex:1; }
 .tables-panel, .charts-panel { margin-top:8px; }
 .section-title { font-weight:700; margin:8px 0; }
-.chart-wrap { height:360px; position:relative; }
+.chart-wrap { height:360px; width: 800px; position:relative; }
 .region-popup { font-weight:600; }
 
 .total-row td { font-weight: 700; border-top: 2px solid #333; }
