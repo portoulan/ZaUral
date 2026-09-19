@@ -111,6 +111,7 @@ const DISPLAY_NAME = {
   "Одесса": "Одесса",
   "Варшава": "Варшава",
   "Ферганская": "Ферганская область"
+  "Камчатская": "Камчатская область"
 };
 
 const state = {
@@ -546,6 +547,8 @@ function showChart(kind) {
           display: true,
           position: 'right',
           labels: {
+            boxWidth: 12,
+            boxHeight: 12,
             generateLabels: chart => chart.data.labels.map((label, i) => ({
               text: legendLabels[i],
               fillStyle: chart.data.datasets[0].backgroundColor[i],
