@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Интерактивная карта миграций</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+    <div id="map"></div>
+    <section class="panel">
+      <div class="panel-title">
+        <div>
+          <h1>Миграции</h1>
+          <div id="yearLabel">1896</div>
+        </div>
+        <button id="panelToggle" class="icon-btn" title="Свернуть">×</button>
+      </div>
+
+      <div class="controls">
+        <div class="control-row">
+          <button id="playBtn" class="primary">▶ Запуск</button>
+          <button id="pauseBtn">Ⅱ Пауза</button>
+          <button id="speedBtn">Скорость: ×1</button>
+        </div>
+
+        <div class="years" id="yearButtons"></div>
+
+        <label class="range-wrap">
+          <span>Год</span>
+          <input id="yearSlider" type="range" min="1896" max="1916" step="1" value="1896">
+        </label>
+
+        <div class="legend">
+          <div><span class="line thin"></span><span>меньший поток</span></div>
+          <div><span class="line thick"></span><span>больший поток</span></div>
+          <div class="hint">Нулевые потоки не отображаются. Толщина линии масштабируется логарифмически по объёму потока.</div>
+        </div>
+
+        <div class="tables">
+          <button id="fromBtn">Исход</button>
+          <button id="toBtn">Водворение</button>
+        </div>
+
+        <div id="tablePanel" class="table-panel hidden">
+          <div class="table-head">
+            <strong id="tableTitle"></strong>
+            <button id="closeTable" class="icon-btn">×</button>
+          </div>
+          <div id="tableContent"></div>
+        </div>
+
+        <div id="status" class="status">Загрузка данных…</div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
