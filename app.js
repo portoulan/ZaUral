@@ -17,52 +17,6 @@ const CHART_COLORS = [
 ];
 const OTHER_COLOR = '#808080';
 
-const pieCalloutPlugin = {
-  id: 'pieCalloutLabels',
-  afterDraw(chart) {
-    if (chart.config.type !== 'pie') return;
-    const ctx = chart.ctx;
-    const meta = chart.getDatasetMeta(0);
-    const data = chart.data.datasets[0].data;
-    const total = data.reduce((a,b) => a + Number(b || 0), 0);
-    if (!total) return;
-
-    ctx.save();
-    ctx.font = '600 12px Arial, sans-serif';
-    ctx.fillStyle = '#222';
-    ctx.strokeStyle = '#555';
-    ctx.lineWidth = 1;
-
-    meta.data.forEach((arc, i) => {
-      const angle = (arc.startAngle + arc.endAngle) / 2;
-      const r = arc.outerRadius;
-      const cx = arc.x, cy = arc.y;
-      const x1 = cx + Math.cos(angle) * r;
-      const y1 = cy + Math.sin(angle) * r;
-      const elbow = r + 18;
-      const x2 = cx + Math.cos(angle) * elbow;
-      const y2 = cy + Math.sin(angle) * elbow;
-      const right = Math.cos(angle) >= 0;
-      const x3 = x2 + (right ? 34 : -34);
-      const y3 = y2;
-
-      const pct = (Number(data[i]) / total * 100).toFixed(1);
-      const label = `${chart.data.labels[i]} (${pct}%)`;
-
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.lineTo(x3, y3);
-      ctx.stroke();
-
-      ctx.textAlign = right ? 'left' : 'right';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(label, x3 + (right ? 5 : -5), y3);
-    });
-    ctx.restore();
-  }
-};
-
 const DISPLAY_NAME = {
   "Акмолинская": "Акмолинская область",
   "Архангельская": "Архангельская губерния",
@@ -363,23 +317,14 @@ function calculateFlows(year) {
 }
 
 function weightFor(value, max) {
-  if (!value || value <= 0) return 0;
-  const ratio = Math.log10(value + 1) / Math.log10(max + 1);
-  return 1.5 + 9.5 * Math.max(0, Math.min(1, ratio));
-}
-
-function namesForSegment(a, b) {
-  const names = new Set([
-    ...(state.regionByNode.get(a) || []),
-    ...(state.regionByNode.get(b) || [])
-  ]);
-  return [...names];
+  if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(max) || max <= 0) return 0;
+  // Небольшие потоки остаются тонкими, крупные заметно толще.
+  return Math.max(0.8, 0.8 + Math.pow(value / max, 0.55) * 8.0);
 }
 
 function renderYear(year) {
   state.currentYear = year;
   document.getElementById('yearLabel').textContent = year;
-  document.getElementById('yearSlider').value = year;
 
   document.querySelectorAll('.years button').forEach(btn => {
     btn.classList.toggle('active', Number(btn.dataset.year) === year);
@@ -485,34 +430,74 @@ function toggleSpeed() {
 
 function getAggregatedRows(kind) {
   const rows = kind === 'from' ? state.fromRows : state.toRows;
-  const nameKey = kind === 'from' ? 'Origin' : (rows[0] && ('Destination' in rows[0] ? 'Destination' : 'Destinatoin'));
+  const nameKey = kind === 'from'
+    ? 'Origin'
+    : (rows[0] && ('Destination' in rows[0] ? 'Destination' : 'Destinatoin'));
+
   const totals = new Map();
+  let sourceGrandTotal = null;
+
   for (const r of rows) {
-    const raw = String(r[nameKey] || '').trim();
-    const name = DISPLAY_NAME[raw] || raw;
+    const rawName = String(r[nameKey] || '').trim();
     const value = num(r[`year_${state.currentYear}`]);
-    if (!name || value <= 0) continue;
-    totals.set(name, (totals.get(name) || 0) + value);
+
+    if (rawName === 'ВСЕГО') {
+      if (Number.isFinite(value)) sourceGrandTotal = value;
+      continue;
+    }
+
+    const displayName = DISPLAY_NAME[rawName] || rawName;
+    if (!displayName || value <= 0) continue;
+    totals.set(displayName, (totals.get(displayName) || 0) + value);
   }
-  return [...totals.entries()].map(([name,value]) => ({name,value})).sort((a,b)=>b.value-a.value);
+
+  return {
+    rows: [...totals.entries()]
+      .map(([name, value]) => ({name, value}))
+      .sort((a,b) => b.value - a.value),
+    sourceGrandTotal
+  };
 }
 
 function showTable(kind) {
   const title = kind === 'from' ? 'Исход' : 'Водворение';
-  const list = getAggregatedRows(kind);
-  document.getElementById('tableTitle').textContent = `${title} — ${state.currentYear}`;
+  const result = getAggregatedRows(kind);
+  const list = result.rows;
+
+  document.getElementById('tableTitle').textContent =
+    `${title} — ${state.currentYear}`;
   document.getElementById('tableTitle').dataset.kind = kind;
   document.getElementById('tablePanel').classList.remove('hidden');
-  document.getElementById('tableContent').innerHTML = `<div class="table-scroll"><table><thead><tr><th>регион</th><th>число переселенцев</th></tr></thead><tbody>${list.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td>${r.value.toLocaleString('ru-RU')}</td></tr>`).join('')}</tbody></table></div>`;
+
+  const totalRow = result.sourceGrandTotal !== null
+    ? `<tr class="total-row"><td>ВСЕГО</td><td>${result.sourceGrandTotal.toLocaleString('ru-RU')}</td></tr>`
+    : '';
+
+  document.getElementById('tableContent').innerHTML = `
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>регион</th><th>число переселенцев</th></tr></thead>
+        <tbody>
+          ${list.map(r => `
+            <tr><td>${escapeHtml(r.name)}</td><td>${r.value.toLocaleString('ru-RU')}</td></tr>
+          `).join('')}
+          ${totalRow}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function showChart(kind) {
-  const list = getAggregatedRows(kind);
+  const result = getAggregatedRows(kind);
+  const list = result.rows;
+  const total = result.sourceGrandTotal !== null
+    ? result.sourceGrandTotal
+    : list.reduce((sum, r) => sum + r.value, 0);
+
   const top = list.slice(0, 10);
   const rest = list.slice(10).reduce((sum, r) => sum + r.value, 0);
   const labels = top.map(r => r.name);
   const values = top.map(r => r.value);
-
   if (rest > 0) {
     labels.push('другие');
     values.push(rest);
@@ -521,37 +506,46 @@ function showChart(kind) {
   const backgroundColor = top.map((_, i) => CHART_COLORS[i]);
   if (rest > 0) backgroundColor.push(OTHER_COLOR);
 
+  const legendLabels = labels.map((label, i) => {
+    const pct = total > 0 ? (Number(values[i]) / total * 100).toFixed(1) : '0.0';
+    return `${pct}% - ${label}`;
+  });
+
   const canvas = document.getElementById('migrationChart');
   const ctx = canvas.getContext('2d');
   if (state.chart) state.chart.destroy();
 
   state.chart = new Chart(ctx, {
     type: 'pie',
-    plugins: [pieCalloutPlugin],
     data: {
       labels,
-      datasets: [{
-        data: values,
-        backgroundColor,
-        borderColor: '#ffffff',
-        borderWidth: 1.5
-      }]
+      datasets: [{data: values, backgroundColor, borderColor: '#ffffff', borderWidth: 1.5}]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      layout: {
-        padding: {top: 42, right: 170, bottom: 42, left: 170}
-      },
       plugins: {
-        legend: {display: false},
+        legend: {
+          display: true,
+          position: 'right',
+          labels: {
+            generateLabels: chart => chart.data.labels.map((label, i) => ({
+              text: legendLabels[i],
+              fillStyle: chart.data.datasets[0].backgroundColor[i],
+              strokeStyle: '#ffffff',
+              lineWidth: 1,
+              hidden: false,
+              index: i
+            }))
+          }
+        },
         title: {
           display: true,
           text: `${kind === 'from' ? 'Исход' : 'Водворение'} — ${state.currentYear}`
         },
         tooltip: {
           callbacks: {
-            label: (context) => {
+            label: context => {
               const value = Number(context.raw || 0);
               return `${context.label}: ${value.toLocaleString('ru-RU')} переселенцев`;
             }
@@ -615,11 +609,6 @@ async function init() {
 document.getElementById('playBtn').onclick = startAnimation;
 document.getElementById('pauseBtn').onclick = pauseAnimation;
 document.getElementById('speedBtn').onclick = toggleSpeed;
-
-document.getElementById('yearSlider').oninput = e => {
-  pauseAnimation();
-  renderYear(Number(e.target.value));
-};
 
 document.getElementById('tablesBtn').onclick = () => {
   document.getElementById('tablesPanel').classList.toggle('hidden');
