@@ -116,7 +116,9 @@ const state = {
   currentYear: 1896,
   playing: false,
   speedIndex: 0,
-  timer: null
+  timer: null,
+  chart: null,
+  chartKind: 'from'
 };
 
 const map = L.map('map', { zoomControl: true }).setView([55, 55], 4);
@@ -131,9 +133,21 @@ const flowLayer = L.layerGroup().addTo(map);
 const baseLayer = L.geoJSON(null, {
   style: {
     color: CONFIG.colors.boundary,
-    weight: 0.7,
+    weight: 1.25,
     fillColor: CONFIG.colors.boundaryFill,
     fillOpacity: 0.42
+  },
+  onEachFeature: (feature, layer) => {
+    const raw = feature?.properties?.prov_ENG || feature?.properties?.name || feature?.properties?.NAME;
+    if (raw) {
+      const key = String(raw).trim();
+      const name = DISPLAY_NAME[key] || key;
+      layer.bindPopup(`<div class="region-popup">${escapeHtml(name)}</div>`);
+      layer.on({
+        mouseover: () => layer.setStyle({weight: 1.7}),
+        mouseout: () => baseLayer.resetStyle(layer)
+      });
+    }
   }
 }).addTo(map);
 
@@ -364,15 +378,17 @@ function renderYear(year) {
     path.addTo(flowLayer);
   }
 
-  document.getElementById('status').textContent =
-    `Год ${year}: показано потоков — ${flow.size.toLocaleString('ru-RU')}.`;
+  document.getElementById('status').textContent = '';
 
-  // Если таблица уже открыта, обновляем её для выбранного года.
   const tablePanel = document.getElementById('tablePanel');
   if (!tablePanel.classList.contains('hidden')) {
-    const title = document.getElementById('tableTitle').dataset.kind;
-    if (title) showTable(title);
+    const kind = document.getElementById('tableTitle').dataset.kind;
+    if (kind) showTable(kind);
   }
+  if (!document.getElementById('chartsPanel').classList.contains('hidden')) {
+    showChart(state.chartKind);
+  }
+
 }
 
 function buildYearButtons() {
@@ -414,54 +430,43 @@ function toggleSpeed() {
   else renderYear(state.currentYear);
 }
 
-function showTable(kind) {
+function getAggregatedRows(kind) {
   const rows = kind === 'from' ? state.fromRows : state.toRows;
-  const title = kind === 'from'
-    ? 'Исход'
-    : 'Водворение';
+  const nameKey = kind === 'from' ? 'Origin' : (rows[0] && ('Destination' in rows[0] ? 'Destination' : 'Destinatoin'));
+  const totals = new Map();
+  for (const r of rows) {
+    const raw = String(r[nameKey] || '').trim();
+    const name = DISPLAY_NAME[raw] || raw;
+    const value = num(r[`year_${state.currentYear}`]);
+    if (!name || value <= 0) continue;
+    totals.set(name, (totals.get(name) || 0) + value);
+  }
+  return [...totals.entries()].map(([name,value]) => ({name,value})).sort((a,b)=>b.value-a.value);
+}
 
-  document.getElementById('tableTitle').textContent =
-    `${title} — ${state.currentYear}`;
+function showTable(kind) {
+  const title = kind === 'from' ? 'Исход' : 'Водворение';
+  const list = getAggregatedRows(kind);
+  document.getElementById('tableTitle').textContent = `${title} — ${state.currentYear}`;
   document.getElementById('tableTitle').dataset.kind = kind;
   document.getElementById('tablePanel').classList.remove('hidden');
+  document.getElementById('tableContent').innerHTML = `<div class="table-scroll"><table><thead><tr><th>регион</th><th>число переселенцев</th></tr></thead><tbody>${list.map(r=>`<tr><td>${escapeHtml(r.name)}</td><td>${r.value.toLocaleString('ru-RU')}</td></tr>`).join('')}</tbody></table></div>`;
+}
 
-  const nameKey = kind === 'from'
-    ? 'Origin'
-    : (rows[0] && ('Destination' in rows[0] ? 'Destination' : 'Destinatoin'));
-
-  // Суммируем все узлы, относящиеся к одному региону.
-  // Показываем только регионы с ненулевым значением.
-  const totals = new Map();
-
-  for (const r of rows) {
-    const rawName = String(r[nameKey] || '').trim();
-    const displayName = DISPLAY_NAME[rawName] || rawName;
-    const value = num(r[`year_${state.currentYear}`]);
-
-    if (!displayName || value <= 0) continue;
-    totals.set(displayName, (totals.get(displayName) || 0) + value);
-  }
-
-  const list = [...totals.entries()]
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
-
-  document.getElementById('tableContent').innerHTML = `
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr><th>регион</th><th>число переселенцев</th></tr>
-        </thead>
-        <tbody>
-          ${list.map(r => `
-            <tr>
-              <td>${escapeHtml(r.name)}</td>
-              <td>${r.value.toLocaleString('ru-RU')}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>`;
+function showChart(kind) {
+  state.chartKind = kind;
+  const list = getAggregatedRows(kind);
+  const top = list.slice(0,10);
+  const other = list.slice(10).reduce((s,r)=>s+r.value,0);
+  const labels = top.map(r=>r.name);
+  const values = top.map(r=>r.value);
+  if (other > 0) { labels.push('другие'); values.push(other); }
+  if (state.chart) state.chart.destroy();
+  state.chart = new Chart(document.getElementById('migrationChart'), {
+    type:'pie',
+    data:{labels, datasets:[{data:values}]},
+    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right'}, title:{display:true,text:`${kind==='from'?'Исход':'Водворение'} — ${state.currentYear}`}}}
+  });
 }
 
 function escapeHtml(s) {
@@ -506,8 +511,7 @@ async function init() {
     const bounds = baseLayer.getBounds();
     if (bounds.isValid()) map.fitBounds(bounds.pad(0.04));
 
-    document.getElementById('status').textContent =
-      `Загружено узлов: ${state.nodes.size}; источников: ${state.fromRows.length}; строк водворения: ${state.toRows.length}.`;
+    document.getElementById('status').textContent = '';
   } catch (err) {
     console.error(err);
     document.getElementById('status').innerHTML =
@@ -524,15 +528,20 @@ document.getElementById('yearSlider').oninput = e => {
   renderYear(Number(e.target.value));
 };
 
+document.getElementById('tablesBtn').onclick = () => {
+  document.getElementById('tablesPanel').classList.toggle('hidden');
+  document.getElementById('chartsPanel').classList.add('hidden');
+};
+document.getElementById('chartsBtn').onclick = () => {
+  document.getElementById('chartsPanel').classList.toggle('hidden');
+  document.getElementById('tablesPanel').classList.add('hidden');
+  if (!document.getElementById('chartsPanel').classList.contains('hidden')) showChart(state.chartKind);
+};
 document.getElementById('fromBtn').onclick = () => showTable('from');
 document.getElementById('toBtn').onclick = () => showTable('to');
-document.getElementById('closeTable').onclick = () =>
-  document.getElementById('tablePanel').classList.add('hidden');
-
-document.getElementById('panelToggle').onclick = () => {
-  const controls = document.querySelector('.controls');
-  controls.style.display = controls.style.display === 'none' ? '' : 'none';
-};
+document.getElementById('fromChartBtn').onclick = () => showChart('from');
+document.getElementById('toChartBtn').onclick = () => showChart('to');
+document.getElementById('closeTable').onclick = () => document.getElementById('tablePanel').classList.add('hidden');
 
 init();
 

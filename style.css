@@ -62,3 +62,12 @@ th { position:sticky; top:0; background:#f7f8f9; z-index:1; }
 }
 
 .region-popup { font-size: 14px; line-height: 1.45; font-weight: 600; min-width: 120px; }
+
+
+/* Version 3 UI */
+.actions, .table-tabs, .chart-tabs { display:flex; gap:8px; margin:8px 0; }
+.actions button, .table-tabs button, .chart-tabs button { flex:1; }
+.tables-panel, .charts-panel { margin-top:8px; }
+.section-title { font-weight:700; margin:8px 0; }
+.chart-wrap { height:360px; position:relative; }
+.region-popup { font-weight:600; }
