@@ -196,14 +196,18 @@ function renderYear(year) {
   if (state.flowLayer) state.flowLayer.clearLayers();
   else state.flowLayer = L.layerGroup().addTo(map);
 
+  // Calculate the amount travelling through every node. A flow from a source
+  // continues through every EDGES segment, including branches and merge nodes.
   const flows = calculateNodeFlows(state.currentYear);
-  const positive = state.edges.map(([a]) => flows.get(a) || 0).filter(v => v > 0);
-  const max = Math.max(...positive, 0);
+  let max = 0;
+  for (const value of flows.values()) if (value > max) max = value;
 
   for (const [a, b] of state.edges) {
     const value = flows.get(a) || 0;
     if (value <= 0) continue;
-    const ca = coords(a), cb = coords(b);
+
+    const ca = coords(a);
+    const cb = coords(b);
     if (!ca || !cb) continue;
 
     const options = {
@@ -216,13 +220,13 @@ function renderYear(year) {
     };
 
     let line;
-    if (L.polyline.antPath) {
+    if (typeof L.polyline.antPath === 'function') {
       line = L.polyline.antPath([ca, cb], {
         ...options,
-        delay: 400,
+        delay: Math.max(80, 400 / state.speed),
         dashArray: [10, 20],
         pulseColor: CONFIG.colors.flow,
-        paused: !state.running,
+        paused: true,
         reverse: false
       });
     } else {
@@ -230,10 +234,14 @@ function renderYear(year) {
     }
 
     const names = namesForSegment(a, b);
-    line.bindPopup(`<div class="region-popup">${escapeHtml(names.length ? names.join(', ') : 'Регион не определён')}</div>`);
+    line.bindPopup(
+      `<div class="region-popup">${escapeHtml(names.length ? names.join(', ') : 'Регион не определён')}</div>`
+    );
     line.addTo(state.flowLayer);
   }
 
+  // Start/stop is controlled separately from changing the year.
+  setAntPathPaused(!state.running);
   updateYearUI();
   refreshPanels();
 }
@@ -273,10 +281,6 @@ function startAnimation() {
   if (state.running) return;
   state.running = true;
   setAntPathPaused(false);
-  const delay = Math.max(100, CONFIG.animationDelay / state.speed);
-  state.timer = setInterval(() => {
-    // Animation advances the visual flow only; year is not changed.
-  }, delay);
 }
 
 function pauseAnimation() {
@@ -290,7 +294,10 @@ function toggleSpeed() {
   state.speed = state.speed === 1 ? 2 : state.speed === 2 ? 4 : 1;
   const btn = document.getElementById('speedBtn');
   if (btn) btn.textContent = `Скорость: ×${state.speed}`;
-  if (state.running) { pauseAnimation(); startAnimation(); }
+  if (state.flowLayer) {
+    // Recreate ant-path layers so the new delay is applied consistently.
+    renderYear(state.currentYear);
+  }
 }
 
 function aggregateTable(kind) {
