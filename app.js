@@ -523,7 +523,7 @@ function showChart(kind) {
   const backgroundColor = top.map((_, i) => CHART_COLORS[i]);
   if (rest > 0) backgroundColor.push(OTHER_COLOR);
 
-  const legendLabels = labels.map((label, i) => {
+  const Labels = labels.map((label, i) => {
     const pct = total > 0 ? (Number(values[i]) / total * 100).toFixed(1) : '0.0';
     return `${pct}% - ${label}`;
   });
@@ -546,6 +546,9 @@ function showChart(kind) {
           display: true,
           position: 'right',
           labels: {
+            boxWidth: 12,
+            boxHeight: 12,
+            padding: 8,
             generateLabels: chart => chart.data.labels.map((label, i) => ({
               text: legendLabels[i],
               fillStyle: chart.data.datasets[0].backgroundColor[i],
