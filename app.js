@@ -529,15 +529,11 @@ function showChart(kind) {
   });
 
   const canvas = document.getElementById('migrationChart');
-  const ctx = canvas.getContext('2d');
+  if (!canvas) return;
   if (state.chart) state.chart.destroy();
-
-  state.chart = new Chart(ctx, {
+  state.chart = new Chart(canvas.getContext('2d'), {
     type: 'pie',
-    data: {
-      labels,
-      datasets: [{data: values, backgroundColor, borderColor: '#ffffff', borderWidth: 1.5}]
-    },
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor: '#fff', borderWidth: 1.5 }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -546,28 +542,18 @@ function showChart(kind) {
           display: true,
           position: 'right',
           labels: {
-            generateLabels: chart => chart.data.labels.map((label, i) => ({
-              text: legendLabels[i],
+            boxWidth: 12,
+            boxHeight: 12,
+            padding: 8,
+            generateLabels: chart => chart.data.labels.map((label,i) => ({
+              text: legend[i],
               fillStyle: chart.data.datasets[0].backgroundColor[i],
-              strokeStyle: '#ffffff',
-              lineWidth: 1,
-              hidden: false,
-              index: i
+              strokeStyle: '#fff', lineWidth: 1, hidden: false, index: i
             }))
           }
         },
-        title: {
-          display: true,
-          text: `${kind === 'from' ? 'Исход' : 'Водворение'} — ${state.currentYear}`
-        },
-        tooltip: {
-          callbacks: {
-            label: context => {
-              const value = Number(context.raw || 0);
-              return `${context.label}: ${value.toLocaleString('ru-RU')} переселенцев`;
-            }
-          }
-        }
+        title: { display: true, text: `${kind === 'from' ? 'Исход' : 'Водворение'} — ${state.currentYear}` },
+        tooltip: { callbacks: { label: ctx => `${ctx.label}: ${Number(ctx.raw || 0).toLocaleString('ru-RU')} переселенцев` } }
       }
     }
   });
