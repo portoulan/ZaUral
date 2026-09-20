@@ -193,58 +193,86 @@ function weightFor(value, max) {
 
 function renderYear(year) {
   state.currentYear = Number(year);
+
+  const yearLabel = document.getElementById('yearLabel');
+  if (yearLabel) yearLabel.textContent = year;
+
+  document.querySelectorAll('#yearButtons button').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.year) === Number(year));
+  });
+
   if (state.flowLayer) state.flowLayer.clearLayers();
   else state.flowLayer = L.layerGroup().addTo(map);
 
-  // Calculate the amount travelling through every node. A flow from a source
-  // continues through every EDGES segment, including branches and merge nodes.
-  const flows = calculateNodeFlows(state.currentYear);
-  let max = 0;
-  for (const value of flows.values()) if (value > max) max = value;
+  // This is the v5 flow calculation: every calculated edge flow is rendered
+  // as an Ant Path, including branches and merged nodes.
+  const flow = calculateNodeFlows(year);
+  const values = [...flow.values()].filter(v => v > 0);
+  const max = Math.max(...values, 1);
+  state.maxFlow = max;
 
   for (const [a, b] of state.edges) {
-    const value = flows.get(a) || 0;
+    const value = flow.get(a) || 0;
     if (value <= 0) continue;
 
-    const ca = coords(a);
-    const cb = coords(b);
-    if (!ca || !cb) continue;
+    const A = state.nodes.get(a);
+    const B = state.nodes.get(b);
+    if (!A || !B) continue;
 
+    let path;
     const options = {
-      color: CONFIG.colors.flow,
+      delay: CONFIG.antDelay[state.speedIndex],
+      dashArray: [10, 20],
       weight: weightFor(value, max),
-      opacity: 0.82,
+      color: CONFIG.colors.flow,
+      pulseColor: '#ffffff',
+      paused: !state.playing,
+      hardwareAccelerated: true,
+      reverse: false,
+      opacity: 0.86,
       lineCap: 'round',
-      lineJoin: 'round',
-      interactive: true
+      lineJoin: 'round'
     };
 
-    let line;
     if (typeof L.polyline.antPath === 'function') {
-      line = L.polyline.antPath([ca, cb], {
-        ...options,
-        delay: Math.max(80, 400 / state.speed),
-        dashArray: [10, 20],
-        pulseColor: CONFIG.colors.flow,
-        paused: true,
-        reverse: false
-      });
+      path = L.polyline.antPath(
+        [[A.lat, A.lon], [B.lat, B.lon]],
+        options
+      );
     } else {
-      line = L.polyline([ca, cb], options);
+      path = L.polyline([[A.lat, A.lon], [B.lat, B.lon]], options);
     }
 
     const names = namesForSegment(a, b);
-    line.bindPopup(
-      `<div class="region-popup">${escapeHtml(names.length ? names.join(', ') : 'Регион не определён')}</div>`
-    );
-    line.addTo(state.flowLayer);
+    if (names.length) {
+      path.bindPopup(
+        `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
+        { closeButton: true }
+      );
+    }
+
+    path.on('mouseover', () => path.setStyle({ opacity: 1 }));
+    path.on('mouseout', () => path.setStyle({ opacity: 0.86 }));
+    path.addTo(state.flowLayer);
   }
 
-  // Start/stop is controlled separately from changing the year.
-  setAntPathPaused(!state.running);
-  updateYearUI();
-  refreshPanels();
+  const status = document.getElementById('status');
+  if (status) status.textContent = '';
+
+  const tablePanel = document.getElementById('tablePanel');
+  if (tablePanel && !tablePanel.classList.contains('hidden')) {
+    const kind = document.getElementById('tableTitle')?.dataset.kind;
+    if (kind) showTable(kind);
+  }
+
+  const chartsPanel = document.getElementById('chartsPanel');
+  if (chartsPanel && !chartsPanel.classList.contains('hidden')) {
+    const kind = window.currentChartKind || 'from';
+    applyRegionTheme(kind);
+    showChart(kind);
+  }
 }
+
 
 function updateYearUI() {
   const label = document.getElementById('yearLabel');
@@ -278,27 +306,34 @@ function setAntPathPaused(paused) {
 }
 
 function startAnimation() {
-  if (state.running) return;
   state.running = true;
-  setAntPathPaused(false);
+  if (state.flowLayer) {
+    state.flowLayer.eachLayer(layer => {
+      if (layer.resume) layer.resume();
+    });
+  }
 }
+
 
 function pauseAnimation() {
   state.running = false;
-  if (state.timer) clearInterval(state.timer);
-  state.timer = null;
-  setAntPathPaused(true);
-}
-
-function toggleSpeed() {
-  state.speed = state.speed === 1 ? 2 : state.speed === 2 ? 4 : 1;
-  const btn = document.getElementById('speedBtn');
-  if (btn) btn.textContent = `Скорость: ×${state.speed}`;
   if (state.flowLayer) {
-    // Recreate ant-path layers so the new delay is applied consistently.
-    renderYear(state.currentYear);
+    state.flowLayer.eachLayer(layer => {
+      if (layer.pause) layer.pause();
+    });
   }
 }
+
+
+function toggleSpeed() {
+  state.speedIndex = (state.speedIndex + 1) % 3;
+  const btn = document.getElementById('speedBtn');
+  if (btn) btn.textContent = `Скорость: ×${[1, 2, 4][state.speedIndex]}`;
+
+  if (state.running) startAnimation();
+  else renderYear(state.currentYear);
+}
+
 
 function aggregateTable(kind) {
   const rows = kind === 'from' ? state.fromRows : state.toRows;
@@ -340,6 +375,62 @@ function showTable(kind) {
         ${result.grandTotal !== null ? `<tr class="total-row"><td>ВСЕГО</td><td>${result.grandTotal.toLocaleString('ru-RU')}</td></tr>` : ''}
       </tbody>
     </table></div>`;
+}
+
+function clearRegionTheme() {
+  baseLayer.eachLayer(layer => baseLayer.resetStyle(layer));
+}
+
+function applyRegionTheme(kind) {
+  const rows = kind === 'from' ? state.fromRows : state.toRows;
+  const nameKey = kind === 'from'
+    ? 'Origin'
+    : (rows[0] && Object.prototype.hasOwnProperty.call(rows[0], 'Destination')
+        ? 'Destination' : 'Destinatoin');
+
+  const values = new Map();
+
+  for (const row of rows) {
+    const raw = String(row[nameKey] || '').trim();
+    if (!raw || raw === 'ВСЕГО') continue;
+    const value = num(row[`year_${state.currentYear}`]);
+    if (value > 0) values.set(raw, (values.get(raw) || 0) + value);
+  }
+
+  let max = 0;
+  for (const value of values.values()) max = Math.max(max, value);
+
+  baseLayer.eachLayer(layer => {
+    const raw = String(
+      layer.feature?.properties?.prov_ENG ||
+      layer.feature?.properties?.name ||
+      layer.feature?.properties?.NAME || ''
+    ).trim();
+
+    const value = values.get(raw) || 0;
+
+    if (!value || !max) {
+      layer.setStyle({
+        color: CONFIG.colors.boundary,
+        weight: 1.35,
+        fillColor: '#eeeeee',
+        fillOpacity: 0.10
+      });
+      return;
+    }
+
+    const t = Math.pow(value / max, 0.45);
+    const fillColor = kind === 'from'
+      ? `rgb(255, ${Math.round(245 - 150*t)}, ${Math.round(245 - 150*t)})`
+      : `rgb(${Math.round(245 - 150*t)}, 255, ${Math.round(245 - 150*t)})`;
+
+    layer.setStyle({
+      color: CONFIG.colors.boundary,
+      weight: 1.5,
+      fillColor,
+      fillOpacity: 0.18 + 0.30*t
+    });
+  });
 }
 
 function showChart(kind) {
@@ -404,17 +495,18 @@ function wireControls() {
   document.getElementById('tablesBtn')?.addEventListener('click', () => {
     document.getElementById('tablesPanel')?.classList.toggle('hidden');
     document.getElementById('chartsPanel')?.classList.add('hidden');
+    clearRegionTheme();
   });
   document.getElementById('chartsBtn')?.addEventListener('click', () => {
     const p = document.getElementById('chartsPanel');
     p?.classList.toggle('hidden');
     document.getElementById('tablesPanel')?.classList.add('hidden');
-    if (p && !p.classList.contains('hidden')) showChart(window.currentChartKind || 'from');
+    if (p && !p.classList.contains('hidden')) { const kind = window.currentChartKind || 'from'; applyRegionTheme(kind); showChart(kind); }
   });
   document.getElementById('fromBtn')?.addEventListener('click', () => showTable('from'));
   document.getElementById('toBtn')?.addEventListener('click', () => showTable('to'));
-  document.getElementById('fromChartBtn')?.addEventListener('click', () => { window.currentChartKind='from'; showChart('from'); });
-  document.getElementById('toChartBtn')?.addEventListener('click', () => { window.currentChartKind='to'; showChart('to'); });
+  document.getElementById('fromChartBtn')?.addEventListener('click', () => { window.currentChartKind='from'; applyRegionTheme('from'); showChart('from'); });
+  document.getElementById('toChartBtn')?.addEventListener('click', () => { window.currentChartKind='to'; applyRegionTheme('to'); showChart('to'); });
   document.getElementById('closeTable')?.addEventListener('click', () => document.getElementById('tablePanel')?.classList.add('hidden'));
 }
 
