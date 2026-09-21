@@ -345,6 +345,9 @@ function renderYear(year) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
 
+  updateYearInfo();
+  updateYearArrowButtons();
+
   document.querySelectorAll('.years button').forEach(btn => {
     btn.classList.toggle('active', Number(btn.dataset.year) === state.currentYear);
   });
@@ -414,6 +417,7 @@ function renderYear(year) {
   const chartsPanel = document.getElementById('chartsPanel');
   if (chartsPanel && !chartsPanel.classList.contains('hidden')) {
     showChart(state.chartKind);
+  updateChartTotal();
   }
 
   if (state.mapKind) {
@@ -423,20 +427,15 @@ function renderYear(year) {
 
 
 function buildYearButtons() {
-  const box = document.getElementById('yearButtons');
-  box.innerHTML = '';
-
-  CONFIG.years.forEach(year => {
-    const btn = document.createElement('button');
-    btn.textContent = year;
-    btn.dataset.year = year;
-    btn.onclick = () => {
-      pauseAnimation();
-      renderYear(year);
-    };
+  const box=document.getElementById('yearButtons'); box.innerHTML='';
+  CONFIG.years.forEach(year=>{
+    const btn=document.createElement('button'); btn.textContent=year; btn.dataset.year=year;
+    btn.onclick=()=>{const playing=state.playing;renderYear(year);if(playing)startAnimation();else pauseAnimation();};
     box.appendChild(btn);
   });
+  updateYearArrowButtons();
 }
+
 
 function pauseAnimation() {
   state.playing = false;
@@ -480,6 +479,20 @@ function toggleSpeed() {
 
 
 
+
+const YEAR_TOTALS={1896:190302,1897:84733,1898:200080,1899:221034,1900:218552,1901:119557,1902:110396,1903:125444,1904:46719,1905:44029,1906:216646,1907:576211,1908:758770,1909:707077,1910:352950,1911:226062,1912:259585,1913:327430,1914:336409,1915:28185,1916:11201};
+function yearTotalText(){return `${state.currentYear} год - ${YEAR_TOTALS[state.currentYear]??0} переселенцев`;}
+function updateYearInfo(){document.querySelectorAll('.year-info,.chart-total').forEach(e=>e.textContent=yearTotalText());}
+function updateYearArrowButtons(){
+ const ys=CONFIG.years, i=ys.indexOf(Number(state.currentYear));
+ const p=document.getElementById('prevYearBtn'),n=document.getElementById('nextYearBtn');
+ if(p)p.disabled=i<=0;if(n)n.disabled=i<0||i>=ys.length-1;
+}
+function changeYear(delta){
+ const ys=CONFIG.years,i=ys.indexOf(Number(state.currentYear));if(i<0)return;
+ const ni=Math.max(0,Math.min(ys.length-1,i+delta));if(ni===i)return;
+ const playing=state.playing;renderYear(ys[ni]);if(playing)startAnimation();else pauseAnimation();
+}
 function updateAnimationButton() {
   const btn = document.getElementById('animationBtn');
   if (!btn) return;
@@ -589,35 +602,18 @@ function applyMapTheme(kind) {
   renderMapLegend(kind, max);
 }
 
-function renderMapLegend(kind, max) {
-  const box = document.getElementById('mapLegend');
-  if (!box) return;
-
-  const title = kind === 'from'
-    ? 'Число переселенцев — исход'
-    : 'Число переселенцев — водворение';
-
-  const labels = max > 0
-    ? [
-        ['минимум', 0.05],
-        ['низкое значение', 0.25],
-        ['среднее значение', 0.50],
-        ['высокое значение', 0.75],
-        ['максимум', 1.00]
-      ]
-    : [];
-
-  box.innerHTML =
-    `<div class="map-legend-title">${title}</div>` +
-    (labels.length
-      ? labels.map(([label, t]) => `
-          <div class="map-legend-row">
-            <span class="map-legend-swatch" style="background:${colorScale(kind, t)}"></span>
-            <span>${label}</span>
-          </div>
-        `).join('')
-      : '<div>Нет ненулевых значений для выбранного года.</div>');
+function renderMapLegend(kind,max){
+ const box=document.getElementById('mapLegend');if(!box)return;
+ const title=kind==='from'?'Число переселенцев — исход':'Число переселенцев — водворение';
+ if(!max||max<=0){box.innerHTML=`<div class="map-legend-title">${title}</div><div>Нет ненулевых значений для выбранного года.</div><div class="year-info">${yearTotalText()}</div>`;return;}
+ const bands=[[0,.2],[.2,.4],[.4,.6],[.6,.8],[.8,1]];
+ const rows=bands.map(([lo,hi],i)=>{
+   const low=i===0?0:Math.floor(max*lo)+1, high=i===4?Math.round(max):Math.floor(max*hi);
+   return `<div class="map-legend-row"><span class="map-legend-swatch" style="background:${colorScale(kind,(lo+hi)/2)}"></span><span>${low.toLocaleString('ru-RU')}–${high.toLocaleString('ru-RU')}</span></div>`;
+ }).join('');
+ box.innerHTML=`<div class="map-legend-title">${title}</div>${rows}<div class="year-info">${yearTotalText()}</div>`;
 }
+
 
 function clearMapTheme() {
   state.mapKind = null;
@@ -634,6 +630,12 @@ function showOnlyPanel(panelId) {
 }
 
 
+function updateChartTotal(){
+ const wrap=document.querySelector('.chart-wrap');if(!wrap)return;
+ let el=wrap.querySelector('.chart-total');
+ if(!el){el=document.createElement('div');el.className='chart-total';wrap.appendChild(el);}
+ el.textContent=yearTotalText();
+}
 function getAggregatedRows(kind) {
   const rows = kind === 'from' ? state.fromRows : state.toRows;
   const nameKey = kind === 'from'
@@ -847,6 +849,7 @@ document.getElementById('chartsBtn').onclick = () => {
   showOnlyPanel('chartsPanel');
   clearMapTheme();
   showChart(state.chartKind);
+  updateChartTotal();
 };
 
 document.getElementById('mapsBtn').onclick = () => {
@@ -861,10 +864,12 @@ document.getElementById('toBtn').onclick = () => showTable('to');
 document.getElementById('fromChartBtn').onclick = () => {
   state.chartKind = 'from';
   showChart('from');
+  updateChartTotal();
 };
 document.getElementById('toChartBtn').onclick = () => {
   state.chartKind = 'to';
   showChart('to');
+  updateChartTotal();
 };
 
 document.getElementById('fromMapBtn').onclick = () => applyMapTheme('from');
