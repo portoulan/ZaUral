@@ -6,7 +6,7 @@
   <title>Интерактивная карта миграций</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="favicon.ico" type="image/x-icon">
+<link rel="icon" href="favicon.ico" type="image/x-icon">
 </head>
 <body>
   <main id="app">
@@ -17,53 +17,67 @@
           <h1>Миграции</h1>
           <div id="yearLabel">1896</div>
         </div>
-        <button id="panelToggle" class="icon-btn" title="Свернуть">×</button>
+        <button id="panelToggle" class="icon-btn" title="Свернуть меню">☰</button>
       </div>
 
-      <div class="controls">
-        <div class="control-row">
-          <button id="playBtn" class="primary">▶ Запуск потока</button>
-          <button id="pauseBtn">Ⅱ Остановить поток</button>
-          <button id="speedBtn">Скорость: ×1</button>
-        </div>
+      
+<div class="controls" id="menuBody">
+  <div class="control-section">
+    <div class="control-title">Управление</div>
+    <div class="control-row">
+      <button id="flowsBtn" class="primary">Потоки: включены</button>
+      <button id="animationBtn">Анимация: выключена</button>
+      <button id="speedBtn">Скорость: ×1</button>
+    </div>
+  </div>
 
-        <div class="years" id="yearButtons"></div>
+  <div class="control-section">
+    <div class="control-title">Год</div>
+    <div class="years" id="yearButtons"></div>
+  </div>
 
-        <label class="range-wrap">
-          <span>Год</span>
-</label>
+  <div class="actions">
+    <button id="tablesBtn">Таблицы</button>
+    <button id="chartsBtn">Диаграммы</button>
+    <button id="mapsBtn">Карты</button>
+  </div>
 
-        <div class="actions">
-          <button id="tablesBtn">Таблицы</button>
-          <button id="chartsBtn">Диаграммы</button>
-        </div>
-
-        <div id="tablesPanel" class="tables-panel hidden">
-          <div class="section-title">Таблицы</div>
-          <div class="table-tabs">
-            <button id="fromBtn">Исход</button>
-            <button id="toBtn">Водворение</button>
-          </div>
-          <div id="tablePanel" class="table-panel hidden">
-            <div class="table-head">
-              <strong id="tableTitle"></strong>
-              <button id="closeTable" class="icon-btn">×</button>
-            </div>
-            <div id="tableContent"></div>
-          </div>
-        </div>
-
-        <div id="chartsPanel" class="charts-panel hidden">
-          <div class="section-title">Диаграммы</div>
-          <div class="chart-tabs">
-            <button id="fromChartBtn">Исход</button>
-            <button id="toChartBtn">Водворение</button>
-          </div>
-          <div class="chart-wrap"><canvas id="migrationChart"></canvas></div>
-        </div>
-
-        <div id="status" class="status">Загрузка данных…</div>
+  <div id="tablesPanel" class="tables-panel hidden">
+    <div class="section-title">Таблицы</div>
+    <div class="table-tabs">
+      <button id="fromBtn">Исход</button>
+      <button id="toBtn">Водворение</button>
+    </div>
+    <div id="tablePanel" class="table-panel hidden">
+      <div class="table-head">
+        <strong id="tableTitle"></strong>
+        <button id="closeTable" class="icon-btn">×</button>
       </div>
+      <div id="tableContent"></div>
+    </div>
+  </div>
+
+  <div id="chartsPanel" class="charts-panel hidden">
+    <div class="section-title">Диаграммы</div>
+    <div class="chart-tabs">
+      <button id="fromChartBtn">Исход</button>
+      <button id="toChartBtn">Водворение</button>
+    </div>
+    <div class="chart-wrap"><canvas id="migrationChart"></canvas></div>
+  </div>
+
+  <div id="mapsPanel" class="maps-panel hidden">
+    <div class="section-title">Карты</div>
+    <div class="map-tabs">
+      <button id="fromMapBtn">Исход</button>
+      <button id="toMapBtn">Водворение</button>
+    </div>
+    <div id="mapLegend" class="map-legend"></div>
+  </div>
+
+  <div id="status" class="status">Загрузка данных…</div>
+</div>
+</div>
     </section>
   </main>
 

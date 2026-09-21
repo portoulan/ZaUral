@@ -73,3 +73,60 @@ th { position:sticky; top:0; background:#f7f8f9; z-index:1; }
 .region-popup { font-weight:600; }
 
 .total-row td { font-weight: 700; border-top: 2px solid #333; }
+
+
+/* v11 menu and map mode */
+.panel.collapsed {
+  width: auto;
+  min-width: 0;
+  overflow: visible;
+}
+.panel.collapsed .panel-title {
+  border-bottom: 0;
+  padding-bottom: 12px;
+}
+.panel.collapsed .controls {
+  display: none;
+}
+.control-section {
+  border-bottom: 1px solid #e6e8eb;
+  padding-bottom: 9px;
+  margin-bottom: 10px;
+}
+.control-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5f6973;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.actions button, .map-tabs button {
+  flex: 1;
+}
+.map-legend {
+  margin-top: 10px;
+  border-top: 1px solid #e6e8eb;
+  padding-top: 10px;
+  font-size: 12px;
+}
+.map-legend-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.map-legend-row {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  gap: 7px;
+  margin: 5px 0;
+}
+.map-legend-swatch {
+  width: 18px;
+  height: 12px;
+  border: 1px solid rgba(0,0,0,.12);
+  border-radius: 2px;
+}
+.flow-disabled .leaflet-overlay-pane {
+  /* Actual visibility is controlled by the Leaflet layer below. */
+}
