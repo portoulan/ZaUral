@@ -592,12 +592,24 @@ function buildRegionValues(kind) {
 }
 
 function colorScale(kind, t) {
-  // Very transparent thematic fill: the basemap remains visible.
   const strength = Math.max(0, Math.min(1, t));
+  const alpha = 0.65;
+
   if (kind === 'from') {
-    return `rgb(255, ${Math.round(248 - 145 * strength)}, ${Math.round(248 - 145 * strength)})`;
+    return `rgba(
+      255,
+      ${Math.round(248 - 145 * strength)},
+      ${Math.round(248 - 145 * strength)},
+      ${alpha}
+    )`;
   }
-  return `rgb(${Math.round(248 - 145 * strength)}, 255, ${Math.round(248 - 145 * strength)})`;
+
+  return `rgba(
+    ${Math.round(248 - 145 * strength)},
+    255,
+    ${Math.round(248 - 145 * strength)},
+    ${alpha}
+  )`;
 }
 
 function applyMapTheme(kind) {
@@ -782,12 +794,12 @@ function showChart(kind) {
       index: i
     })),
 
-    padding: 6,
-    boxWidth: 10,
-    boxHeight: 10,
+    padding: 5,
+    boxWidth: 12,
+    boxHeight: 12,
 
     font: {
-      size: 11
+      size: 15
     }
   }
 },
