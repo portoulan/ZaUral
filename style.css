@@ -142,3 +142,26 @@ th { position:sticky; top:0; background:#f7f8f9; z-index:1; }
   width:10px!important;height:10px!important;min-width:10px!important;min-height:10px!important;
   border-radius:0!important;
 }
+
+.chart-wrap {
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+}
+.chart-wrap canvas {
+  order:1;
+}
+.chart-wrap .chart-total {
+  order:2;
+}
+.chart-wrap .chart-legend,
+.chart-wrap .legend,
+.chart-wrap .pie-legend {
+  order:3;
+  width:100%;
+  margin-top:10px;
+}
+
+.chart-wrap .chartLegend{order:3;width:100%;margin-top:10px;}
+
+.chart-wrap .legend{order:3;width:100%;margin-top:10px;}

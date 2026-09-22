@@ -451,9 +451,17 @@ function buildYearButtons() {
     btn.textContent=year; btn.dataset.year=year;
     btn.onclick=()=>{
       const wasPlaying=state.playing;
-      pauseAnimation();
+      if(wasPlaying) pauseAnimation();
+
       renderYear(year);
-      if(wasPlaying)startAnimation();
+
+      if(wasPlaying) startAnimation();
+      else {
+        state.playing=false;
+        state.flowsVisible=false;
+        if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
+        updateAnimationButton();
+      }
     };
     box.appendChild(btn);
   });
@@ -508,10 +516,20 @@ function changeYear(delta) {
   if(i<0)return;
   const ni=Math.max(0,Math.min(ys.length-1,i+delta));
   if(ni===i)return;
+
   const wasPlaying=state.playing;
-  pauseAnimation();
+  // Rebuild the selected year without changing the user's animation preference.
+  if(wasPlaying) pauseAnimation();
+
   renderYear(ys[ni]);
-  if(wasPlaying)startAnimation();
+
+  if(wasPlaying) startAnimation();
+  else {
+    state.playing=false;
+    state.flowsVisible=false;
+    if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
+    updateAnimationButton();
+  }
 }
 function updateAnimationButton() {
   const btn=document.getElementById('animationBtn');
