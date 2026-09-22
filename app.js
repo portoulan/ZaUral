@@ -591,22 +591,42 @@ function buildRegionValues(kind) {
   return values;
 }
 
+// ============================================================
+// ЦВЕТА ТЕМАТИЧЕСКИХ КАРТ
+// ============================================================
+
+// Красные оттенки — карта "ИСХОД"
+const FROM_COLORS = [
+  'rgba(255, 220, 220, 0.85)', // 1-й диапазон
+  'rgba(255, 175, 175, 0.85)', // 2-й
+  'rgba(255, 125, 125, 0.85)', // 3-й
+  'rgba(230, 60, 60, 0.85)',   // 4-й
+  'rgba(180, 0, 0, 0.85)'      // 5-й
+];
+
+// Зелёные оттенки — карта "ВОДВОРЕНИЕ"
+const TO_COLORS = [
+  'rgba(215, 245, 220, 0.85)', // 1-й диапазон
+  'rgba(165, 230, 175, 0.85)', // 2-й
+  'rgba(105, 205, 125, 0.85)', // 3-й
+  'rgba(40, 160, 65, 0.85)',   // 4-й
+  'rgba(0, 105, 35, 0.85)'     // 5-й
+];
+
 function colorScale(kind, t) {
   const strength = Math.max(0, Math.min(1, t));
 
+  // Определяем номер диапазона 0–4
+  const index = Math.min(
+    4,
+    Math.floor(strength * 5)
+  );
+
   if (kind === 'from') {
-    return `rgba(
-      220,
-      ${Math.round(248 - 145 * strength)},
-      ${Math.round(248 - 145 * strength)},
-    )`;
+    return FROM_COLORS[index];
   }
 
-  return `rgba(
-    ${Math.round(248 - 145 * strength)},
-    210,
-    ${Math.round(248 - 145 * strength)},
-  )`;
+  return TO_COLORS[index];
 }
 
 function applyMapTheme(kind) {
@@ -793,7 +813,7 @@ function showChart(kind) {
 
     padding: 5,
     boxWidth: 12,
-    boxHeight: 15,
+    boxHeight: 12,
 
     font: {
       size: 14
