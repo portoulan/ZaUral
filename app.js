@@ -593,14 +593,12 @@ function buildRegionValues(kind) {
 
 function colorScale(kind, t) {
   const strength = Math.max(0, Math.min(1, t));
-  const alpha = 1.00;
 
   if (kind === 'from') {
     return `rgba(
       220,
       ${Math.round(248 - 145 * strength)},
       ${Math.round(248 - 145 * strength)},
-      ${alpha}
     )`;
   }
 
@@ -608,7 +606,6 @@ function colorScale(kind, t) {
     ${Math.round(248 - 145 * strength)},
     210,
     ${Math.round(248 - 145 * strength)},
-    ${alpha}
   )`;
 }
 
@@ -796,10 +793,10 @@ function showChart(kind) {
 
     padding: 5,
     boxWidth: 12,
-    boxHeight: 12,
+    boxHeight: 15,
 
     font: {
-      size: 12
+      size: 14
     }
   }
 },
