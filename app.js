@@ -144,7 +144,7 @@ const baseLayer = L.geoJSON(null, {
     color: CONFIG.colors.boundary,
     weight: 1.25,
     fillColor: CONFIG.colors.boundaryFill,
-    fillOpacity: 0.42
+    fillOpacity: 0.75
   },
   onEachFeature: (feature, layer) => {
     const raw = feature?.properties?.prov_ENG || feature?.properties?.name || feature?.properties?.NAME;
