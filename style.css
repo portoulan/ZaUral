@@ -136,3 +136,9 @@ th { position:sticky; top:0; background:#f7f8f9; z-index:1; }
 .year-info,.chart-total{margin-top:8px;padding-top:7px;border-top:1px solid #e6e8eb;font-size:12.5px;font-weight:600;color:#4e5964}
 
 #animationBtn{min-width:150px;}
+
+.chart-legend .legend-marker,.chart-legend .legend-color,.chart-legend .legend-swatch,
+.legend-marker,.legend-color {
+  width:10px!important;height:10px!important;min-width:10px!important;min-height:10px!important;
+  border-radius:0!important;
+}

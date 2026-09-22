@@ -335,13 +335,29 @@ function namesForSegment(a, b) {
   return [...names];
 }
 
-function weightFor(value,max) {
+
+let FLOW_MAX_BY_YEAR={};
+function rebuildFlowMaxByYear(){
+  FLOW_MAX_BY_YEAR={};
+  (CONFIG.years||[]).forEach(year=>{
+    let max=0;
+    if(typeof flowValues!=='undefined' && flowValues[year]){
+      Object.values(flowValues[year]).forEach(v=>{const n=Number(v)||0;if(n>max)max=n;});
+    }
+    FLOW_MAX_BY_YEAR[year]=max;
+  });
+}
+function getFlowYearMaximum(year){
+  if(!Object.keys(FLOW_MAX_BY_YEAR).length)rebuildFlowMaxByYear();
+  return FLOW_MAX_BY_YEAR[year]||0;
+}
+function weightFor(value,max,year=state.currentYear){
   if(!value||value<=0)return 1.5;
-  const minWeight=1.5;
-  const oldMaxWeight=10;
-  const maxWeight=oldMaxWeight*1.5;
-  const ratio=max>0?Math.max(0,Math.min(1,value/max)):0;
-  const t=Math.log1p(ratio*99)/Math.log1p(99);
+  const minWeight=1.5,maxWeight=15;
+  const reference1908=getFlowYearMaximum(1908);
+  const reference=Math.max(reference1908,max||0);
+  const ratio=reference>0?Math.max(0,Math.min(1,Number(value)/reference)):0;
+  const t=Math.sqrt(ratio);
   return minWeight+(maxWeight-minWeight)*t;
 }
 
@@ -450,13 +466,15 @@ function pauseAnimation() {
   if(state.timer)clearInterval(state.timer);
   state.timer=null;
   flowLayer.eachLayer(layer=>{if(layer.pause)layer.pause();});
+  state.flowsVisible=false;
+  if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);
   updateAnimationButton();
 }
 
 
 function startAnimation() {
   state.flowsVisible=true;
-  if(!map.hasLayer(flowLayer)) flowLayer.addTo(map);
+  if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
   state.playing=true;
   flowLayer.eachLayer(layer=>{if(layer.resume)layer.resume();});
   updateAnimationButton();
@@ -598,15 +616,20 @@ function applyMapTheme(kind) {
 }
 
 function renderMapLegend(kind,max){
- const box=document.getElementById('mapLegend');if(!box)return;
- const title=kind==='from'?'Число переселенцев — исход':'Число переселенцев — водворение';
- if(!max||max<=0){box.innerHTML=`<div class="map-legend-title">${title}</div><div>Нет ненулевых значений для выбранного года.</div><div class="year-info">${yearTotalText()}</div>`;return;}
- const bands=[[0,.2],[.2,.4],[.4,.6],[.6,.8],[.8,1]];
- const rows=bands.map(([lo,hi],i)=>{
-   const low=i===0?0:Math.floor(max*lo)+1, high=i===4?Math.round(max):Math.floor(max*hi);
-   return `<div class="map-legend-row"><span class="map-legend-swatch" style="background:${colorScale(kind,(lo+hi)/2)}"></span><span>${low.toLocaleString('ru-RU')}–${high.toLocaleString('ru-RU')}</span></div>`;
- }).join('');
- box.innerHTML=`<div class="map-legend-title">${title}</div>${rows}<div class="year-info">${yearTotalText()}</div>`;
+  const box=document.getElementById('mapLegend');
+  if(!box)return;
+  const title=kind==='from'?'Число переселенцев — исход':'Число переселенцев — водворение';
+  if(!max||max<=0){
+    box.innerHTML=`<div class="map-legend-title">${title}</div><div>Нет ненулевых значений для выбранного года.</div><div class="year-info">${yearTotalText()}</div>`;
+    return;
+  }
+  const bands=[[0,.2],[.2,.4],[.4,.6],[.6,.8],[.8,1]];
+  const rows=bands.map(([lo,hi],i)=>{
+    const low=i===0?1:Math.floor(max*lo)+1;
+    const high=i===4?Math.round(max):Math.floor(max*hi);
+    return `<div class="map-legend-row"><span class="map-legend-swatch" style="background:${colorScale(kind,(lo+hi)/2)}"></span><span>${low.toLocaleString('ru-RU')}–${high.toLocaleString('ru-RU')}</span></div>`;
+  }).join('');
+  box.innerHTML=`<div class="map-legend-title">${title}</div>${rows}<div class="year-info">${yearTotalText()}</div>`;
 }
 
 
