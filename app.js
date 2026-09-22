@@ -771,18 +771,26 @@ function showChart(kind) {
       plugins: {
         legend: {
           display: true,
-          position: 'right',
+          position: 'bottom',
           labels: {
             generateLabels: chart => chart.data.labels.map((label, i) => ({
-              text: legendLabels[i],
-              fillStyle: chart.data.datasets[0].backgroundColor[i],
-              strokeStyle: '#ffffff',
-              lineWidth: 1,
-              hidden: false,
-              index: i
-            }))
-          }
-        },
+      text: legendLabels[i],
+      fillStyle: chart.data.datasets[0].backgroundColor[i],
+      strokeStyle: '#ffffff',
+      lineWidth: 1,
+      hidden: false,
+      index: i
+    })),
+
+    padding: 6,
+    boxWidth: 10,
+    boxHeight: 10,
+
+    font: {
+      size: 11
+    }
+  }
+},
         title: {
           display: true,
           text: `${kind === 'from' ? 'Исход' : 'Водворение'} — ${state.currentYear}`
