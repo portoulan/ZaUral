@@ -593,11 +593,11 @@ function buildRegionValues(kind) {
 
 function colorScale(kind, t) {
   const strength = Math.max(0, Math.min(1, t));
-  const alpha = 0.90;
+  const alpha = 1.00;
 
   if (kind === 'from') {
     return `rgba(
-      255,
+      139,
       ${Math.round(248 - 145 * strength)},
       ${Math.round(248 - 145 * strength)},
       ${alpha}
@@ -606,7 +606,7 @@ function colorScale(kind, t) {
 
   return `rgba(
     ${Math.round(248 - 145 * strength)},
-    255,
+    100,
     ${Math.round(248 - 145 * strength)},
     ${alpha}
   )`;
