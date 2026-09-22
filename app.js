@@ -593,7 +593,7 @@ function buildRegionValues(kind) {
 
 function colorScale(kind, t) {
   const strength = Math.max(0, Math.min(1, t));
-  const alpha = 0.65;
+  const alpha = 0.90;
 
   if (kind === 'from') {
     return `rgba(
@@ -799,7 +799,7 @@ function showChart(kind) {
     boxHeight: 12,
 
     font: {
-      size: 15
+      size: 12
     }
   }
 },
