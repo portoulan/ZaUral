@@ -335,10 +335,14 @@ function namesForSegment(a, b) {
   return [...names];
 }
 
-function weightFor(value, max) {
-  if (!Number.isFinite(value) || value <= 0 || !Number.isFinite(max) || max <= 0) return 0;
-  // Небольшие потоки остаются тонкими, крупные заметно толще.
-  return Math.max(0.8, 0.8 + Math.pow(value / max, 0.55) * 8.0);
+function weightFor(value,max) {
+  if(!value||value<=0)return 1.5;
+  const minWeight=1.5;
+  const oldMaxWeight=10;
+  const maxWeight=oldMaxWeight*1.5;
+  const ratio=max>0?Math.max(0,Math.min(1,value/max)):0;
+  const t=Math.log1p(ratio*99)/Math.log1p(99);
+  return minWeight+(maxWeight-minWeight)*t;
 }
 
 function renderYear(year) {
@@ -400,11 +404,8 @@ function renderYear(year) {
     path.addTo(flowLayer);
   }
 
-  if (!state.flowsVisible) {
-    map.removeLayer(flowLayer);
-  } else if (!map.hasLayer(flowLayer)) {
-    flowLayer.addTo(map);
-  }
+  state.flowsVisible=true;
+  if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
 
   document.getElementById('status').textContent = '';
 
@@ -427,10 +428,17 @@ function renderYear(year) {
 
 
 function buildYearButtons() {
-  const box=document.getElementById('yearButtons'); box.innerHTML='';
+  const box=document.getElementById('yearButtons');
+  box.innerHTML='';
   CONFIG.years.forEach(year=>{
-    const btn=document.createElement('button'); btn.textContent=year; btn.dataset.year=year;
-    btn.onclick=()=>{const playing=state.playing;renderYear(year);if(playing)startAnimation();else pauseAnimation();};
+    const btn=document.createElement('button');
+    btn.textContent=year; btn.dataset.year=year;
+    btn.onclick=()=>{
+      const wasPlaying=state.playing;
+      pauseAnimation();
+      renderYear(year);
+      if(wasPlaying)startAnimation();
+    };
     box.appendChild(btn);
   });
   updateYearArrowButtons();
@@ -438,30 +446,19 @@ function buildYearButtons() {
 
 
 function pauseAnimation() {
-  state.playing = false;
-  if (state.timer) clearInterval(state.timer);
-  state.timer = null;
-
-  if (flowLayer) {
-    flowLayer.eachLayer(layer => {
-      if (layer.pause) layer.pause();
-    });
-  }
+  state.playing=false;
+  if(state.timer)clearInterval(state.timer);
+  state.timer=null;
+  flowLayer.eachLayer(layer=>{if(layer.pause)layer.pause();});
   updateAnimationButton();
 }
 
 
 function startAnimation() {
-  if (!state.flowsVisible) {
-    setFlowsVisible(true);
-  }
-
-  state.playing = true;
-
-  flowLayer.eachLayer(layer => {
-    if (layer.resume) layer.resume();
-  });
-
+  state.flowsVisible=true;
+  if(!map.hasLayer(flowLayer)) flowLayer.addTo(map);
+  state.playing=true;
+  flowLayer.eachLayer(layer=>{if(layer.resume)layer.resume();});
   updateAnimationButton();
 }
 
@@ -488,18 +485,21 @@ function updateYearArrowButtons(){
  const p=document.getElementById('prevYearBtn'),n=document.getElementById('nextYearBtn');
  if(p)p.disabled=i<=0;if(n)n.disabled=i<0||i>=ys.length-1;
 }
-function changeYear(delta){
- const ys=CONFIG.years,i=ys.indexOf(Number(state.currentYear));if(i<0)return;
- const ni=Math.max(0,Math.min(ys.length-1,i+delta));if(ni===i)return;
- const playing=state.playing;renderYear(ys[ni]);if(playing)startAnimation();else pauseAnimation();
+function changeYear(delta) {
+  const ys=CONFIG.years, i=ys.indexOf(Number(state.currentYear));
+  if(i<0)return;
+  const ni=Math.max(0,Math.min(ys.length-1,i+delta));
+  if(ni===i)return;
+  const wasPlaying=state.playing;
+  pauseAnimation();
+  renderYear(ys[ni]);
+  if(wasPlaying)startAnimation();
 }
 function updateAnimationButton() {
-  const btn = document.getElementById('animationBtn');
-  if (!btn) return;
-  btn.textContent = state.playing
-    ? 'Анимация: включена'
-    : 'Анимация: выключена';
-  btn.classList.toggle('primary', state.playing);
+  const btn=document.getElementById('animationBtn');
+  if(!btn)return;
+  btn.textContent=state.playing?'Анимация: включена':'Анимация';
+  btn.classList.toggle('primary',state.playing);
 }
 
 function updateFlowsButton() {
@@ -512,15 +512,10 @@ function updateFlowsButton() {
 }
 
 function setFlowsVisible(visible) {
-  state.flowsVisible = Boolean(visible);
-
-  if (state.flowsVisible) {
-    if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
-  } else {
-    if (map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
-  }
-
-  updateFlowsButton();
+  state.flowsVisible=Boolean(visible);
+  if(state.flowsVisible){if(!map.hasLayer(flowLayer))flowLayer.addTo(map);}
+  else{if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);}
+  updateAnimationButton();
 }
 
 function setAnimationVisible(enabled) {
@@ -804,8 +799,7 @@ async function init() {
     state.currentYear = CONFIG.years[0];
     state.flowsVisible = true;
     state.playing = false;
-    updateFlowsButton();
-    updateAnimationButton();
+updateAnimationButton();
     renderYear(CONFIG.years[0]);
 
     const bounds = baseLayer.getBounds();
@@ -828,15 +822,10 @@ document.getElementById('panelToggle').onclick = () => {
     panel.classList.contains('collapsed') ? '☰' : '×';
 };
 
-document.getElementById('flowsBtn').onclick = () => {
-  setFlowsVisible(!state.flowsVisible);
+document.getElementById('animationBtn').onclick=()=>{
+  if(state.playing) pauseAnimation();
+  else { renderYear(state.currentYear); startAnimation(); }
 };
-
-document.getElementById('animationBtn').onclick = () => {
-  setAnimationVisible(!state.playing);
-};
-
-document.getElementById('speedBtn').onclick = toggleSpeed;
 
 document.getElementById('tablesBtn').onclick = () => {
   showOnlyPanel('tablesPanel');
@@ -878,5 +867,8 @@ document.getElementById('toMapBtn').onclick = () => applyMapTheme('to');
 document.getElementById('closeTable').onclick = () => {
   document.getElementById('tablePanel').classList.add('hidden');
 };
+
+document.getElementById('prevYearBtn').onclick=()=>changeYear(-1);
+document.getElementById('nextYearBtn').onclick=()=>changeYear(1);
 
 init();
