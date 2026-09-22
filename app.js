@@ -597,7 +597,7 @@ function colorScale(kind, t) {
 
   if (kind === 'from') {
     return `rgba(
-      139,
+      220,
       ${Math.round(248 - 145 * strength)},
       ${Math.round(248 - 145 * strength)},
       ${alpha}
@@ -606,7 +606,7 @@ function colorScale(kind, t) {
 
   return `rgba(
     ${Math.round(248 - 145 * strength)},
-    100,
+    210,
     ${Math.round(248 - 145 * strength)},
     ${alpha}
   )`;
@@ -783,7 +783,7 @@ function showChart(kind) {
       plugins: {
         legend: {
           display: true,
-          position: 'bottom',
+          position: 'right',
           labels: {
             generateLabels: chart => chart.data.labels.map((label, i) => ({
       text: legendLabels[i],
