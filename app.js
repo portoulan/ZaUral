@@ -144,7 +144,7 @@ const baseLayer = L.geoJSON(null, {
     color: CONFIG.colors.boundary,
     weight: 1.25,
     fillColor: CONFIG.colors.boundaryFill,
-    fillOpacity: 0.50
+    fillOpacity: 0.42
   },
   onEachFeature: (feature, layer) => {
     const raw = feature?.properties?.prov_ENG || feature?.properties?.name || feature?.properties?.NAME;
@@ -361,6 +361,109 @@ function weightFor(value,max,year=state.currentYear){
   return minWeight+(maxWeight-minWeight)*t;
 }
 
+
+function buildContinuousRoutes(flow) {
+  const positiveEdges = new Map();
+  const incoming = new Map();
+
+  for (const [key, value] of flow) {
+    if (!value || value <= 0) continue;
+    const split = key.indexOf('>');
+    if (split < 0) continue;
+    const a = key.slice(0, split);
+    const b = key.slice(split + 1);
+
+    if (!positiveEdges.has(a)) positiveEdges.set(a, []);
+    positiveEdges.get(a).push({node: b, value});
+
+    if (!incoming.has(b)) incoming.set(b, []);
+    incoming.get(b).push(a);
+  }
+
+  const starts = new Set();
+
+  for (const [a] of positiveEdges) {
+    if (!incoming.has(a) || incoming.get(a).length === 0) starts.add(a);
+  }
+
+  for (const row of state.fromRows) {
+    const node = String(row.EDGE || '').trim();
+    if (node && positiveEdges.has(node)) starts.add(node);
+  }
+
+  const routes = [];
+
+  function walk(node, nodes, values, visited) {
+    const next = positiveEdges.get(node) || [];
+
+    if (!next.length) {
+      routes.push({nodes: [...nodes], values: [...values]});
+      return;
+    }
+
+    for (const edge of next) {
+      if (visited.has(edge.node)) {
+        routes.push({nodes: [...nodes], values: [...values]});
+        continue;
+      }
+
+      const nextVisited = new Set(visited);
+      nextVisited.add(edge.node);
+
+      walk(
+        edge.node,
+        [...nodes, edge.node],
+        [...values, edge.value],
+        nextVisited
+      );
+    }
+  }
+
+  for (const start of starts) {
+    walk(start, [start], [], new Set([start]));
+  }
+
+  const usedEdges = new Set();
+
+  for (const route of routes) {
+    for (let i = 0; i < route.nodes.length - 1; i++) {
+      usedEdges.add(`${route.nodes[i]}>${route.nodes[i + 1]}`);
+    }
+  }
+
+  for (const [key, value] of flow) {
+    if (!value || value <= 0 || usedEdges.has(key)) continue;
+
+    const split = key.indexOf('>');
+    if (split < 0) continue;
+
+    routes.push({
+      nodes: [key.slice(0, split), key.slice(split + 1)],
+      values: [value]
+    });
+  }
+
+  return routes;
+}
+
+function namesForRoute(nodes) {
+  const names = new Set();
+
+  for (const node of nodes) {
+    const set = state.regionByNode.get(node);
+    if (!set) continue;
+
+    for (const raw of set) {
+      const key = String(raw).trim();
+      if (key && key !== 'ВСЕГО') {
+        names.add(DISPLAY_NAME[key] || key);
+      }
+    }
+  }
+
+  return [...names];
+}
+
 function renderYear(year) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
@@ -369,7 +472,10 @@ function renderYear(year) {
   updateYearArrowButtons();
 
   document.querySelectorAll('.years button').forEach(btn => {
-    btn.classList.toggle('active', Number(btn.dataset.year) === state.currentYear);
+    btn.classList.toggle(
+      'active',
+      Number(btn.dataset.year) === state.currentYear
+    );
   });
 
   flowLayer.clearLayers();
@@ -378,68 +484,129 @@ function renderYear(year) {
   const values = [...flow.values()].filter(v => v > 0);
   const max = Math.max(...values, 1);
 
-  // Every calculated edge is rendered. The network is not reconstructed
-  // from neighbouring nodes during drawing, so branches and merges remain intact.
+  // Основная сеть: отдельные участки сохраняются,
+  // поэтому сохраняется индивидуальная толщина каждого ребра.
   for (const [key, value] of flow) {
     if (value <= 0) continue;
 
     const split = key.indexOf('>');
+    if (split < 0) continue;
+
     const a = key.slice(0, split);
     const b = key.slice(split + 1);
+
     const A = state.nodes.get(a);
     const B = state.nodes.get(b);
     if (!A || !B) continue;
 
-    const path = L.polyline.antPath(
+    const path = L.polyline(
       [[A.lat, A.lon], [B.lat, B.lon]],
       {
-        delay: CONFIG.antDelay[state.speedIndex],
-        dashArray: [10, 20],
         weight: weightFor(value, max),
         color: CONFIG.colors.flow,
-        pulseColor: '#ffffff',
-        paused: !state.playing,
-        hardwareAccelerated: true,
-        reverse: false,
         opacity: 0.86,
         lineCap: 'round',
-        lineJoin: 'round'
+        lineJoin: 'round',
+        interactive: true
       }
     );
 
     const names = namesForSegment(a, b);
+
     if (names.length) {
       path.bindPopup(
         `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
-        { closeButton: true }
+        {closeButton: true}
       );
     }
 
-    path.on('mouseover', () => path.setStyle({ opacity: 1 }));
-    path.on('mouseout', () => path.setStyle({ opacity: 0.86 }));
+    path.on('mouseover', () => path.setStyle({opacity: 1}));
+    path.on('mouseout', () => path.setStyle({opacity: 0.86}));
+
     path.addTo(flowLayer);
   }
 
-  state.flowsVisible=true;
-  if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
+  // Анимация: один Ant Path проходит по всей цепочке узлов.
+  if (state.playing) {
+    const routes = buildContinuousRoutes(flow);
+
+    for (const route of routes) {
+      if (!route.nodes || route.nodes.length < 2) continue;
+
+      const coordinates = [];
+
+      for (const nodeId of route.nodes) {
+        const node = state.nodes.get(nodeId);
+        if (!node) continue;
+        coordinates.push([node.lat, node.lon]);
+      }
+
+      if (coordinates.length < 2) continue;
+
+      const positiveValues = route.values.filter(v => v > 0);
+      const routeValue = positiveValues.length
+        ? Math.min(...positiveValues)
+        : 0;
+
+      const animatedPath = L.polyline.antPath(
+        coordinates,
+        {
+          delay: CONFIG.antDelay[state.speedIndex],
+          dashArray: [10, 20],
+          weight: weightFor(routeValue, max),
+          color: CONFIG.colors.flow,
+          pulseColor: '#ffffff',
+          paused: !state.playing,
+          hardwareAccelerated: true,
+          reverse: false,
+          opacity: 0.86,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }
+      );
+
+      const names = namesForRoute(route.nodes);
+
+      if (names.length) {
+        animatedPath.bindPopup(
+          `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
+          {closeButton: true}
+        );
+      }
+
+      animatedPath.on(
+        'mouseover',
+        () => animatedPath.setStyle({opacity: 1})
+      );
+
+      animatedPath.on(
+        'mouseout',
+        () => animatedPath.setStyle({opacity: 0.86})
+      );
+
+      animatedPath.addTo(flowLayer);
+    }
+  }
+
+  state.flowsVisible = true;
+  if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
 
   document.getElementById('status').textContent = '';
 
   const tablePanel = document.getElementById('tablePanel');
   if (tablePanel && !tablePanel.classList.contains('hidden')) {
-    const kind = document.getElementById('tableTitle').dataset.kind;
+    const title = document.getElementById('tableTitle');
+    const kind = title ? title.dataset.kind : '';
     if (kind) showTable(kind);
   }
 
   const chartsPanel = document.getElementById('chartsPanel');
   if (chartsPanel && !chartsPanel.classList.contains('hidden')) {
     showChart(state.chartKind);
-  updateChartTotal();
+    updateChartTotal();
   }
 
-  if (state.mapKind) {
-    applyMapTheme(state.mapKind);
-  }
+  if (state.mapKind) applyMapTheme(state.mapKind);
 }
 
 
@@ -597,20 +764,20 @@ function buildRegionValues(kind) {
 
 // Красные оттенки — карта "ИСХОД"
 const FROM_COLORS = [
-  'rgba(255, 220, 220, 1.00)', // 1-й диапазон
-  'rgba(255, 175, 175, 1.00)', // 2-й
-  'rgba(255, 125, 125, 1.00)', // 3-й
-  'rgba(230, 60, 60, 1.00)',   // 4-й
-  'rgba(180, 0, 0, 1.00)'      // 5-й
+  'rgba(255, 220, 220, 0.95)', // 1-й диапазон
+  'rgba(255, 175, 175, 0.95)', // 2-й
+  'rgba(255, 125, 125, 0.95)', // 3-й
+  'rgba(230, 60, 60, 0.95)',   // 4-й
+  'rgba(180, 0, 0, 0.95)'      // 5-й
 ];
 
 // Зелёные оттенки — карта "ВОДВОРЕНИЕ"
 const TO_COLORS = [
-  'rgba(215, 245, 220, 1.00)', // 1-й диапазон
-  'rgba(165, 230, 175, 1.00)', // 2-й
-  'rgba(105, 205, 125, 1.00)', // 3-й
-  'rgba(40, 160, 65, 1.00)',   // 4-й
-  'rgba(0, 105, 35, 1.00)'     // 5-й
+  'rgba(215, 245, 220, 0.95)', // 1-й диапазон
+  'rgba(165, 230, 175, 0.95)', // 2-й
+  'rgba(105, 205, 125, 0.95)', // 3-й
+  'rgba(40, 160, 65, 0.95)',   // 4-й
+  'rgba(0, 105, 35, 0.95)'     // 5-й
 ];
 
 function colorScale(kind, t) {
