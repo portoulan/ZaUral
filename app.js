@@ -361,6 +361,109 @@ function weightFor(value,max,year=state.currentYear){
   return minWeight+(maxWeight-minWeight)*t;
 }
 
+
+function buildContinuousRoutes(flow) {
+  const positiveEdges = new Map();
+  const incoming = new Map();
+
+  for (const [key, value] of flow) {
+    if (!value || value <= 0) continue;
+    const split = key.indexOf('>');
+    if (split < 0) continue;
+    const a = key.slice(0, split);
+    const b = key.slice(split + 1);
+
+    if (!positiveEdges.has(a)) positiveEdges.set(a, []);
+    positiveEdges.get(a).push({node: b, value});
+
+    if (!incoming.has(b)) incoming.set(b, []);
+    incoming.get(b).push(a);
+  }
+
+  const starts = new Set();
+
+  for (const [a] of positiveEdges) {
+    if (!incoming.has(a) || incoming.get(a).length === 0) starts.add(a);
+  }
+
+  for (const row of state.fromRows) {
+    const node = String(row.EDGE || '').trim();
+    if (node && positiveEdges.has(node)) starts.add(node);
+  }
+
+  const routes = [];
+
+  function walk(node, nodes, values, visited) {
+    const next = positiveEdges.get(node) || [];
+
+    if (!next.length) {
+      routes.push({nodes: [...nodes], values: [...values]});
+      return;
+    }
+
+    for (const edge of next) {
+      if (visited.has(edge.node)) {
+        routes.push({nodes: [...nodes], values: [...values]});
+        continue;
+      }
+
+      const nextVisited = new Set(visited);
+      nextVisited.add(edge.node);
+
+      walk(
+        edge.node,
+        [...nodes, edge.node],
+        [...values, edge.value],
+        nextVisited
+      );
+    }
+  }
+
+  for (const start of starts) {
+    walk(start, [start], [], new Set([start]));
+  }
+
+  const usedEdges = new Set();
+
+  for (const route of routes) {
+    for (let i = 0; i < route.nodes.length - 1; i++) {
+      usedEdges.add(`${route.nodes[i]}>${route.nodes[i + 1]}`);
+    }
+  }
+
+  for (const [key, value] of flow) {
+    if (!value || value <= 0 || usedEdges.has(key)) continue;
+
+    const split = key.indexOf('>');
+    if (split < 0) continue;
+
+    routes.push({
+      nodes: [key.slice(0, split), key.slice(split + 1)],
+      values: [value]
+    });
+  }
+
+  return routes;
+}
+
+function namesForRoute(nodes) {
+  const names = new Set();
+
+  for (const node of nodes) {
+    const set = state.regionByNode.get(node);
+    if (!set) continue;
+
+    for (const raw of set) {
+      const key = String(raw).trim();
+      if (key && key !== 'ВСЕГО') {
+        names.add(DISPLAY_NAME[key] || key);
+      }
+    }
+  }
+
+  return [...names];
+}
+
 function renderYear(year) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
@@ -369,7 +472,10 @@ function renderYear(year) {
   updateYearArrowButtons();
 
   document.querySelectorAll('.years button').forEach(btn => {
-    btn.classList.toggle('active', Number(btn.dataset.year) === state.currentYear);
+    btn.classList.toggle(
+      'active',
+      Number(btn.dataset.year) === state.currentYear
+    );
   });
 
   flowLayer.clearLayers();
@@ -378,68 +484,129 @@ function renderYear(year) {
   const values = [...flow.values()].filter(v => v > 0);
   const max = Math.max(...values, 1);
 
-  // Every calculated edge is rendered. The network is not reconstructed
-  // from neighbouring nodes during drawing, so branches and merges remain intact.
+  // Основная сеть: отдельные участки сохраняются,
+  // поэтому сохраняется индивидуальная толщина каждого ребра.
   for (const [key, value] of flow) {
     if (value <= 0) continue;
 
     const split = key.indexOf('>');
+    if (split < 0) continue;
+
     const a = key.slice(0, split);
     const b = key.slice(split + 1);
+
     const A = state.nodes.get(a);
     const B = state.nodes.get(b);
     if (!A || !B) continue;
 
-    const path = L.polyline.antPath(
+    const path = L.polyline(
       [[A.lat, A.lon], [B.lat, B.lon]],
       {
-        delay: CONFIG.antDelay[state.speedIndex],
-        dashArray: [10, 20],
         weight: weightFor(value, max),
         color: CONFIG.colors.flow,
-        pulseColor: '#ffffff',
-        paused: !state.playing,
-        hardwareAccelerated: true,
-        reverse: false,
         opacity: 0.86,
         lineCap: 'round',
-        lineJoin: 'round'
+        lineJoin: 'round',
+        interactive: true
       }
     );
 
     const names = namesForSegment(a, b);
+
     if (names.length) {
       path.bindPopup(
         `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
-        { closeButton: true }
+        {closeButton: true}
       );
     }
 
-    path.on('mouseover', () => path.setStyle({ opacity: 1 }));
-    path.on('mouseout', () => path.setStyle({ opacity: 0.86 }));
+    path.on('mouseover', () => path.setStyle({opacity: 1}));
+    path.on('mouseout', () => path.setStyle({opacity: 0.86}));
+
     path.addTo(flowLayer);
   }
 
-  state.flowsVisible=true;
-  if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
+  // Анимация: один Ant Path проходит по всей цепочке узлов.
+  if (state.playing) {
+    const routes = buildContinuousRoutes(flow);
+
+    for (const route of routes) {
+      if (!route.nodes || route.nodes.length < 2) continue;
+
+      const coordinates = [];
+
+      for (const nodeId of route.nodes) {
+        const node = state.nodes.get(nodeId);
+        if (!node) continue;
+        coordinates.push([node.lat, node.lon]);
+      }
+
+      if (coordinates.length < 2) continue;
+
+      const positiveValues = route.values.filter(v => v > 0);
+      const routeValue = positiveValues.length
+        ? Math.min(...positiveValues)
+        : 0;
+
+      const animatedPath = L.polyline.antPath(
+        coordinates,
+        {
+          delay: CONFIG.antDelay[state.speedIndex],
+          dashArray: [10, 20],
+          weight: weightFor(routeValue, max),
+          color: CONFIG.colors.flow,
+          pulseColor: '#ffffff',
+          paused: !state.playing,
+          hardwareAccelerated: true,
+          reverse: false,
+          opacity: 0.86,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }
+      );
+
+      const names = namesForRoute(route.nodes);
+
+      if (names.length) {
+        animatedPath.bindPopup(
+          `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
+          {closeButton: true}
+        );
+      }
+
+      animatedPath.on(
+        'mouseover',
+        () => animatedPath.setStyle({opacity: 1})
+      );
+
+      animatedPath.on(
+        'mouseout',
+        () => animatedPath.setStyle({opacity: 0.86})
+      );
+
+      animatedPath.addTo(flowLayer);
+    }
+  }
+
+  state.flowsVisible = true;
+  if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
 
   document.getElementById('status').textContent = '';
 
   const tablePanel = document.getElementById('tablePanel');
   if (tablePanel && !tablePanel.classList.contains('hidden')) {
-    const kind = document.getElementById('tableTitle').dataset.kind;
+    const title = document.getElementById('tableTitle');
+    const kind = title ? title.dataset.kind : '';
     if (kind) showTable(kind);
   }
 
   const chartsPanel = document.getElementById('chartsPanel');
   if (chartsPanel && !chartsPanel.classList.contains('hidden')) {
     showChart(state.chartKind);
-  updateChartTotal();
+    updateChartTotal();
   }
 
-  if (state.mapKind) {
-    applyMapTheme(state.mapKind);
-  }
+  if (state.mapKind) applyMapTheme(state.mapKind);
 }
 
 
@@ -455,12 +622,14 @@ function buildYearButtons() {
 
       renderYear(year);
 
-      if(wasPlaying) startAnimation();
-      else {
-        state.playing=false;
-        state.flowsVisible=false;
-        if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
+      if(wasPlaying) {
+        startAnimation();
+      } else {
+        state.playing = false;
+        state.flowsVisible = true;
+        if(!map.hasLayer(flowLayer)) flowLayer.addTo(map);
         updateAnimationButton();
+        updateFlowsButton();
       }
     };
     box.appendChild(btn);
@@ -469,245 +638,56 @@ function buildYearButtons() {
 }
 
 
-function stopBubbleAnimations() {
-  for (const item of (state.bubbleAnimations || [])) {
-    if (item.raf) cancelAnimationFrame(item.raf);
-    if (item.marker) animationLayer.removeLayer(item.marker);
-  }
-  state.bubbleAnimations = [];
-  if (typeof animationLayer !== 'undefined' && map.hasLayer(animationLayer)) {
-    map.removeLayer(animationLayer);
-  }
-}
-
 function pauseAnimation() {
   state.playing = false;
+
   if (state.timer) clearInterval(state.timer);
   state.timer = null;
-  stopBubbleAnimations();
+
+  // Не удаляем обычные потоки. Кнопка «Анимация» должна
+  // выключать только движущуюся часть, а кнопка «Потоки» —
+  // саму сеть.
+  renderYear(state.currentYear);
   updateAnimationButton();
+  updateFlowsButton();
 }
 
-/*
-  Строим непрерывные маршруты для анимации.
-  Один пузырёк проходит сразу через несколько последовательных узлов.
-  Границы маршрута:
-  - узел исхода;
-  - узел слияния;
-  - узел разветвления;
-  - конечный узел водворения;
-  - тупиковый узел.
-*/
-function buildContinuousRoutes(flow) {
-  const outgoing = new Map();
-  const incoming = new Map();
-  const activeEdges = [];
-
-  for (const [key, value] of flow) {
-    if (!(value > 0)) continue;
-    const i = key.indexOf('>');
-    if (i < 0) continue;
-
-    const a = key.slice(0, i);
-    const b = key.slice(i + 1);
-
-    activeEdges.push({a, b, value});
-
-    if (!outgoing.has(a)) outgoing.set(a, []);
-    outgoing.get(a).push({node: b, value});
-
-    if (!incoming.has(b)) incoming.set(b, []);
-    incoming.get(b).push(a);
-  }
-
-  const sources = new Set();
-  for (const row of state.fromRows) {
-    const node = String(row.EDGE || '').trim();
-    if (node && outgoing.has(node)) sources.add(node);
-  }
-
-  const destinations = new Set(state.destinationNodes || []);
-  const boundary = new Set();
-
-  for (const [node, next] of outgoing) {
-    const inCount = (incoming.get(node) || []).length;
-    const outCount = next.length;
-
-    if (sources.has(node) || inCount !== 1 || outCount !== 1 || destinations.has(node)) {
-      boundary.add(node);
-    }
-  }
-
-  const routes = [];
-  const used = new Set();
-
-  function id(a, b) { return `${a}>${b}`; }
-
-  function follow(start, first) {
-    const nodes = [start];
-    const values = [];
-    let current = start;
-    let edge = first;
-
-    while (edge) {
-      const edgeKey = id(current, edge.node);
-      if (used.has(edgeKey)) break;
-      used.add(edgeKey);
-
-      nodes.push(edge.node);
-      values.push(edge.value);
-      current = edge.node;
-
-      if (current !== start && boundary.has(current)) break;
-
-      const next = outgoing.get(current) || [];
-      if (next.length !== 1) break;
-      edge = next[0];
-    }
-
-    if (nodes.length >= 2) routes.push({nodes, values});
-  }
-
-  for (const startNode of boundary) {
-    for (const edge of (outgoing.get(startNode) || [])) {
-      follow(startNode, edge);
-    }
-  }
-
-  // Гарантируем, что ни одно активное ребро не осталось без маршрута.
-  for (const edge of activeEdges) {
-    if (!used.has(id(edge.a, edge.b))) {
-      follow(edge.a, edge);
-    }
-  }
-
-  return routes;
-}
-
-function makeRouteGeometry(nodes) {
-  const points = [];
-  for (const id of nodes) {
-    const n = state.nodes.get(id);
-    if (n) points.push([n.lat, n.lon]);
-  }
-  if (points.length < 2) return null;
-
-  const projected = points.map(p => map.project(L.latLng(p[0], p[1]), 0));
-  const distances = [0];
-  let total = 0;
-
-  for (let i = 1; i < projected.length; i++) {
-    total += Math.hypot(
-      projected[i].x - projected[i - 1].x,
-      projected[i].y - projected[i - 1].y
-    );
-    distances.push(total);
-  }
-
-  return total > 0 ? {points, distances, total} : null;
-}
-
-function pointOnRoute(g, progress) {
-  const p = Math.max(0, Math.min(1, progress));
-  const target = g.total * p;
-
-  let i = 1;
-  while (i < g.distances.length && g.distances[i] < target) i++;
-
-  if (i >= g.distances.length) return g.points[g.points.length - 1];
-
-  const d0 = g.distances[i - 1];
-  const d1 = g.distances[i];
-  const t = d1 === d0 ? 0 : (target - d0) / (d1 - d0);
-
-  const A = g.points[i - 1];
-  const B = g.points[i];
-
-  return [
-    A[0] + (B[0] - A[0]) * t,
-    A[1] + (B[1] - A[1]) * t
-  ];
-}
-
-function createBubbleAnimations() {
-  stopBubbleAnimations();
-
-  const {flow} = calculateFlows(state.currentYear);
-  const routes = buildContinuousRoutes(flow);
-  if (!routes.length) return;
-
-  state.flowsVisible = true;
-  if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
-  animationLayer.addTo(map);
-
-  const maxFlow = Math.max(getFlowYearMaximum(state.currentYear), 1);
-
-  for (const route of routes) {
-    const geometry = makeRouteGeometry(route.nodes);
-    if (!geometry) continue;
-
-    const marker = L.circleMarker(geometry.points[0], {
-      radius: 5,
-      color: CONFIG.colors.flow,
-      weight: 2,
-      opacity: 1,
-      fillColor: '#ffffff',
-      fillOpacity: 1,
-      interactive: false
-    }).addTo(animationLayer);
-
-    const vals = route.values.filter(v => v > 0);
-    const routeValue = vals.length ? Math.min(...vals) : 1;
-    const factor = Math.max(0.05, Math.min(1, routeValue / maxFlow));
-
-    // Весь маршрут является одной анимацией.
-    const duration = 3000 + geometry.total * 6 /
-      (0.6 + 0.8 * Math.sqrt(factor));
-
-    const item = {
-      marker,
-      geometry,
-      duration,
-      start: performance.now() - Math.random() * duration,
-      raf: null
-    };
-
-    function frame(now) {
-      if (!state.playing) return;
-
-      const progress = Math.max(
-        0,
-        Math.min(1, ((now - item.start) % item.duration) / item.duration)
-      );
-
-      const point = pointOnRoute(item.geometry, progress);
-      if (point) marker.setLatLng(point);
-
-      item.raf = requestAnimationFrame(frame);
-    }
-
-    item.raf = requestAnimationFrame(frame);
-    state.bubbleAnimations.push(item);
-  }
-
-  updateAnimationButton();
-}
 
 function startAnimation() {
+  // Критически важно: сначала включить state.playing,
+  // а уже потом вызвать renderYear().
+  //
+  // Раньше происходило наоборот:
+  // renderYear() видел playing=false и создавал только
+  // статические линии. Затем startAnimation() пытался
+  // resume() у них, хотя animated Ant Path ещё не существовал.
   state.playing = true;
-  createBubbleAnimations();
+  state.flowsVisible = true;
+
+  renderYear(state.currentYear);
+
+  if (!map.hasLayer(flowLayer)) {
+    flowLayer.addTo(map);
+  }
+
   updateAnimationButton();
+  updateFlowsButton();
 }
+
 
 function toggleSpeed() {
   state.speedIndex = (state.speedIndex + 1) % 3;
-  const speedBtn = document.getElementById('speedBtn');
-  if (speedBtn) speedBtn.textContent = `Скорость: ×${[1,2,4][state.speedIndex]}`;
+  document.getElementById('speedBtn').textContent =
+    `Скорость: ×${[1, 2, 4][state.speedIndex]}`;
 
+  // Rebuild only the selected year's flow paths with the new Ant Path delay.
   const wasPlaying = state.playing;
   renderYear(state.currentYear);
   if (wasPlaying) startAnimation();
 }
+
+
+
 
 const YEAR_TOTALS={1896:190302,1897:84733,1898:200080,1899:221034,1900:218552,1901:119557,1902:110396,1903:125444,1904:46719,1905:44029,1906:216646,1907:576211,1908:758770,1909:707077,1910:352950,1911:226062,1912:259585,1913:327430,1914:336409,1915:28185,1916:11201};
 function yearTotalText(){return `${state.currentYear} год - ${YEAR_TOTALS[state.currentYear]??0} переселенцев`;}
@@ -729,9 +709,12 @@ function changeYear(delta) {
 
   renderYear(ys[ni]);
 
-  if(wasPlaying) startAnimation();
-  else {
-    state.playing=false;
+  if(wasPlaying) {
+    startAnimation();
+  } else {
+    state.playing = false;
+    state.flowsVisible = true;
+    if(!map.hasLayer(flowLayer)) flowLayer.addTo(map);
     updateAnimationButton();
     updateFlowsButton();
   }
@@ -753,10 +736,19 @@ function updateFlowsButton() {
 }
 
 function setFlowsVisible(visible) {
-  state.flowsVisible=Boolean(visible);
-  if(state.flowsVisible){if(!map.hasLayer(flowLayer))flowLayer.addTo(map);}
-  else{if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);}
-  updateAnimationButton();
+  state.flowsVisible = Boolean(visible);
+
+  if (!state.flowsVisible) {
+    if (state.playing) {
+      state.playing = false;
+      updateAnimationButton();
+    }
+    if (map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
+  } else {
+    if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
+  }
+
+  updateFlowsButton();
 }
 
 function setAnimationVisible(enabled) {
