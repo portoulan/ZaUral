@@ -464,7 +464,7 @@ function namesForRoute(nodes) {
   return [...names];
 }
 
-function renderYear(year) {
+function renderYear(year, animate = state.playing) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
 
@@ -527,7 +527,7 @@ function renderYear(year) {
   }
 
   // Анимация: один Ant Path проходит по всей цепочке узлов.
-  if (state.playing) {
+  if (animate) {
     const routes = buildContinuousRoutes(flow);
 
     for (const route of routes) {
@@ -620,7 +620,7 @@ function buildYearButtons() {
       const wasPlaying=state.playing;
       if(wasPlaying) pauseAnimation();
 
-      renderYear(year);
+      renderYear(year, wasPlaying);
 
       if(wasPlaying) startAnimation();
       else {
@@ -688,7 +688,7 @@ function changeYear(delta) {
   // Rebuild the selected year without changing the user's animation preference.
   if(wasPlaying) pauseAnimation();
 
-  renderYear(ys[ni]);
+  renderYear(ys[ni], wasPlaying);
 
   if(wasPlaying) startAnimation();
   else {
@@ -1069,7 +1069,7 @@ document.getElementById('panelToggle').onclick = () => {
 
 document.getElementById('animationBtn').onclick=()=>{
   if(state.playing) pauseAnimation();
-  else { renderYear(state.currentYear); startAnimation(); }
+  else { renderYear(state.currentYear, true); startAnimation(); }
 };
 
 document.getElementById('tablesBtn').onclick = () => {
