@@ -2,7 +2,7 @@
 const CONFIG = {
   years: Array.from({length: 21}, (_, i) => 1896 + i),
   animationInterval: [1600, 900, 450],
-  antDelay: [700, 350, 140],
+  antDelay: [1400, 700, 280],
   colors: {
     flow: '#d85b36',
     boundary: '#7d8790',
@@ -138,6 +138,28 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const flowLayer = L.layerGroup().addTo(map);
+
+
+let mapZooming = false;
+
+map.on('zoomstart', () => {
+  mapZooming = true;
+  if (state.playing) {
+    flowLayer.eachLayer(layer => {
+      if (layer.pause) layer.pause();
+    });
+  }
+});
+
+map.on('zoomend', () => {
+  mapZooming = false;
+  // Repaint the current animation state once after zoom completes.
+  if (state.playing) {
+    flowLayer.eachLayer(layer => {
+      if (layer.resume) layer.resume();
+    });
+  }
+});
 
 const baseLayer = L.geoJSON(null, {
   style: {
@@ -556,7 +578,7 @@ function renderYear(year) {
           weight: weightFor(routeValue, max),
           color: CONFIG.colors.flow,
           pulseColor: '#ffffff',
-          paused: !state.playing,
+          paused: !state.playing || mapZooming,
           hardwareAccelerated: true,
           reverse: false,
           opacity: 0.86,
@@ -622,14 +644,12 @@ function buildYearButtons() {
 
       renderYear(year);
 
-      if(wasPlaying) {
-        startAnimation();
-      } else {
-        state.playing = false;
-        state.flowsVisible = true;
-        if(!map.hasLayer(flowLayer)) flowLayer.addTo(map);
+      if(wasPlaying) startAnimation();
+      else {
+        state.playing=false;
+        state.flowsVisible=false;
+        if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
         updateAnimationButton();
-        updateFlowsButton();
       }
     };
     box.appendChild(btn);
@@ -639,39 +659,22 @@ function buildYearButtons() {
 
 
 function pauseAnimation() {
-  state.playing = false;
-
-  if (state.timer) clearInterval(state.timer);
-  state.timer = null;
-
-  // Не удаляем обычные потоки. Кнопка «Анимация» должна
-  // выключать только движущуюся часть, а кнопка «Потоки» —
-  // саму сеть.
-  renderYear(state.currentYear);
+  state.playing=false;
+  if(state.timer)clearInterval(state.timer);
+  state.timer=null;
+  flowLayer.eachLayer(layer=>{if(layer.pause)layer.pause();});
+  state.flowsVisible=false;
+  if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);
   updateAnimationButton();
-  updateFlowsButton();
 }
 
 
 function startAnimation() {
-  // Критически важно: сначала включить state.playing,
-  // а уже потом вызвать renderYear().
-  //
-  // Раньше происходило наоборот:
-  // renderYear() видел playing=false и создавал только
-  // статические линии. Затем startAnimation() пытался
-  // resume() у них, хотя animated Ant Path ещё не существовал.
-  state.playing = true;
-  state.flowsVisible = true;
-
-  renderYear(state.currentYear);
-
-  if (!map.hasLayer(flowLayer)) {
-    flowLayer.addTo(map);
-  }
-
+  state.flowsVisible=true;
+  if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
+  state.playing=true;
+  flowLayer.eachLayer(layer=>{if(layer.resume)layer.resume();});
   updateAnimationButton();
-  updateFlowsButton();
 }
 
 
@@ -709,14 +712,12 @@ function changeYear(delta) {
 
   renderYear(ys[ni]);
 
-  if(wasPlaying) {
-    startAnimation();
-  } else {
-    state.playing = false;
-    state.flowsVisible = true;
-    if(!map.hasLayer(flowLayer)) flowLayer.addTo(map);
+  if(wasPlaying) startAnimation();
+  else {
+    state.playing=false;
+    state.flowsVisible=false;
+    if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
     updateAnimationButton();
-    updateFlowsButton();
   }
 }
 function updateAnimationButton() {
@@ -736,19 +737,10 @@ function updateFlowsButton() {
 }
 
 function setFlowsVisible(visible) {
-  state.flowsVisible = Boolean(visible);
-
-  if (!state.flowsVisible) {
-    if (state.playing) {
-      state.playing = false;
-      updateAnimationButton();
-    }
-    if (map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
-  } else {
-    if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
-  }
-
-  updateFlowsButton();
+  state.flowsVisible=Boolean(visible);
+  if(state.flowsVisible){if(!map.hasLayer(flowLayer))flowLayer.addTo(map);}
+  else{if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);}
+  updateAnimationButton();
 }
 
 function setAnimationVisible(enabled) {
