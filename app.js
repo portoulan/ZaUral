@@ -2,7 +2,7 @@
 const CONFIG = {
   years: Array.from({length: 21}, (_, i) => 1896 + i),
   colors: {
-    flow: '#00008b',
+    flow: '#0000ff',
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
   }
@@ -148,7 +148,7 @@ const flowLayer = L.layerGroup().addTo(map);
   style.id = 'flow-dash-styles';
   style.textContent = `
     .flow-dash {
-      stroke-dasharray: 5 19;
+      stroke-dasharray: 5 45;
       animation-name: flowDash;
       animation-timing-function: linear;
       animation-iteration-count: infinite;
@@ -157,7 +157,7 @@ const flowLayer = L.layerGroup().addTo(map);
     .flow-dash-speed-1 { animation-duration: 1.1s; }
     .flow-dash-speed-2 { animation-duration: 0.55s; }
     @keyframes flowDash {
-      to { stroke-dashoffset: -24; }
+      to { stroke-dashoffset: -50; }
     }
   `;
   document.head.appendChild(style);
