@@ -139,6 +139,26 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const flowLayer = L.layerGroup().addTo(map);
 
+// Во время зума/панорамирования Leaflet непрерывно перепроецирует SVG-путь,
+// а Ant Path в это же время сдвигает dash-offset — конкуренция этих
+// перерисовок и даёт мерцание потока. Решение: на время движения карты
+// анимацию просто приостанавливаем и запускаем заново по его окончании.
+let resumeAfterMove = false;
+
+map.on('zoomstart movestart', () => {
+  if (!state.playing) return;
+  resumeAfterMove = true;
+  flowLayer.eachLayer(layer => { if (layer.pause) layer.pause(); });
+});
+
+map.on('zoomend moveend', () => {
+  if (!resumeAfterMove) return;
+  resumeAfterMove = false;
+  if (state.playing) {
+    flowLayer.eachLayer(layer => { if (layer.resume) layer.resume(); });
+  }
+});
+
 const baseLayer = L.geoJSON(null, {
   style: {
     color: CONFIG.colors.boundary,
