@@ -139,28 +139,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const flowLayer = L.layerGroup().addTo(map);
 
-
-let mapZooming = false;
-
-map.on('zoomstart', () => {
-  mapZooming = true;
-  if (state.playing) {
-    flowLayer.eachLayer(layer => {
-      if (layer.pause) layer.pause();
-    });
-  }
-});
-
-map.on('zoomend', () => {
-  mapZooming = false;
-  // Repaint the current animation state once after zoom completes.
-  if (state.playing) {
-    flowLayer.eachLayer(layer => {
-      if (layer.resume) layer.resume();
-    });
-  }
-});
-
 const baseLayer = L.geoJSON(null, {
   style: {
     color: CONFIG.colors.boundary,
@@ -578,7 +556,7 @@ function renderYear(year) {
           weight: weightFor(routeValue, max),
           color: CONFIG.colors.flow,
           pulseColor: '#ffffff',
-          paused: !state.playing || mapZooming,
+          paused: !state.playing,
           hardwareAccelerated: true,
           reverse: false,
           opacity: 0.86,
