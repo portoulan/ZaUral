@@ -386,6 +386,113 @@ function weightFor(value,max,year=state.currentYear){
 }
 
 
+// Склеивает отдельные рёбра a>b в непрерывные цепочки узлов — от истока
+// (или точки слияния нескольких потоков) до конечной точки маршрута.
+// Это нужно, чтобы CSS-анимация пунктира шла одним непрерывным движением
+// по всей длине потока, а не обрывалась и не начиналась заново на каждом
+// отдельном ребре.
+function buildContinuousRoutes(flow) {
+  const positiveEdges = new Map();
+  const incoming = new Map();
+
+  for (const [key, value] of flow) {
+    if (!value || value <= 0) continue;
+    const split = key.indexOf('>');
+    if (split < 0) continue;
+    const a = key.slice(0, split);
+    const b = key.slice(split + 1);
+
+    if (!positiveEdges.has(a)) positiveEdges.set(a, []);
+    positiveEdges.get(a).push({node: b, value});
+
+    if (!incoming.has(b)) incoming.set(b, []);
+    incoming.get(b).push(a);
+  }
+
+  const starts = new Set();
+
+  for (const [a] of positiveEdges) {
+    if (!incoming.has(a) || incoming.get(a).length === 0) starts.add(a);
+  }
+
+  for (const row of state.fromRows) {
+    const node = String(row.EDGE || '').trim();
+    if (node && positiveEdges.has(node)) starts.add(node);
+  }
+
+  const routes = [];
+
+  function walk(node, nodes, values, visited) {
+    const next = positiveEdges.get(node) || [];
+
+    if (!next.length) {
+      routes.push({nodes: [...nodes], values: [...values]});
+      return;
+    }
+
+    for (const edge of next) {
+      if (visited.has(edge.node)) {
+        routes.push({nodes: [...nodes], values: [...values]});
+        continue;
+      }
+
+      const nextVisited = new Set(visited);
+      nextVisited.add(edge.node);
+
+      walk(
+        edge.node,
+        [...nodes, edge.node],
+        [...values, edge.value],
+        nextVisited
+      );
+    }
+  }
+
+  for (const start of starts) {
+    walk(start, [start], [], new Set([start]));
+  }
+
+  const usedEdges = new Set();
+
+  for (const route of routes) {
+    for (let i = 0; i < route.nodes.length - 1; i++) {
+      usedEdges.add(`${route.nodes[i]}>${route.nodes[i + 1]}`);
+    }
+  }
+
+  for (const [key, value] of flow) {
+    if (!value || value <= 0 || usedEdges.has(key)) continue;
+
+    const split = key.indexOf('>');
+    if (split < 0) continue;
+
+    routes.push({
+      nodes: [key.slice(0, split), key.slice(split + 1)],
+      values: [value]
+    });
+  }
+
+  return routes;
+}
+
+function namesForRoute(nodes) {
+  const names = new Set();
+
+  for (const node of nodes) {
+    const set = state.regionByNode.get(node);
+    if (!set) continue;
+
+    for (const raw of set) {
+      const key = String(raw).trim();
+      if (key && key !== 'ВСЕГО') {
+        names.add(DISPLAY_NAME[key] || key);
+      }
+    }
+  }
+
+  return [...names];
+}
+
 function renderYear(year, animate = state.playing) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
@@ -407,36 +514,40 @@ function renderYear(year, animate = state.playing) {
   const max = Math.max(...values, 1);
   const speedClass = `flow-dash-speed-${state.speedIndex}`;
 
-  // Вся сеть рисуется одним проходом: каждое ребро сохраняет свою
-  // индивидуальную толщину и при этом само «бежит» пунктиром через CSS
-  // (аналог demo Leaflet.Path.DashFlow) — без отдельного оверлея поверх.
-  for (const [key, value] of flow) {
-    if (value <= 0) continue;
+  // Вся сеть рисуется по непрерывным цепочкам узлов (от истока/точки
+  // слияния до конечной точки), а не по отдельным рёбрам — так CSS-пунктир
+  // бежит одним движением через весь поток, не сбрасываясь на стыках.
+  const routes = buildContinuousRoutes(flow);
 
-    const split = key.indexOf('>');
-    if (split < 0) continue;
+  for (const route of routes) {
+    if (!route.nodes || route.nodes.length < 2) continue;
 
-    const a = key.slice(0, split);
-    const b = key.slice(split + 1);
+    const coordinates = [];
 
-    const A = state.nodes.get(a);
-    const B = state.nodes.get(b);
-    if (!A || !B) continue;
+    for (const nodeId of route.nodes) {
+      const node = state.nodes.get(nodeId);
+      if (!node) continue;
+      coordinates.push([node.lat, node.lon]);
+    }
 
-    const path = L.polyline(
-      [[A.lat, A.lon], [B.lat, B.lon]],
-      {
-        weight: weightFor(value, max),
-        color: CONFIG.colors.flow,
-        opacity: 0.9,
-        lineCap: 'round',
-        lineJoin: 'round',
-        interactive: true,
-        className: animate ? `flow-dash ${speedClass}` : ''
-      }
-    );
+    if (coordinates.length < 2) continue;
 
-    const names = namesForSegment(a, b);
+    const positiveValues = route.values.filter(v => v > 0);
+    const routeValue = positiveValues.length
+      ? Math.min(...positiveValues)
+      : 0;
+
+    const path = L.polyline(coordinates, {
+      weight: weightFor(routeValue, max),
+      color: CONFIG.colors.flow,
+      opacity: 0.9,
+      lineCap: 'round',
+      lineJoin: 'round',
+      interactive: true,
+      className: animate ? `flow-dash ${speedClass}` : ''
+    });
+
+    const names = namesForRoute(route.nodes);
 
     if (names.length) {
       path.bindPopup(
