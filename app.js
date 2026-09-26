@@ -386,108 +386,6 @@ function weightFor(value,max,year=state.currentYear){
 }
 
 
-function buildContinuousRoutes(flow) {
-  const positiveEdges = new Map();
-  const incoming = new Map();
-
-  for (const [key, value] of flow) {
-    if (!value || value <= 0) continue;
-    const split = key.indexOf('>');
-    if (split < 0) continue;
-    const a = key.slice(0, split);
-    const b = key.slice(split + 1);
-
-    if (!positiveEdges.has(a)) positiveEdges.set(a, []);
-    positiveEdges.get(a).push({node: b, value});
-
-    if (!incoming.has(b)) incoming.set(b, []);
-    incoming.get(b).push(a);
-  }
-
-  const starts = new Set();
-
-  for (const [a] of positiveEdges) {
-    if (!incoming.has(a) || incoming.get(a).length === 0) starts.add(a);
-  }
-
-  for (const row of state.fromRows) {
-    const node = String(row.EDGE || '').trim();
-    if (node && positiveEdges.has(node)) starts.add(node);
-  }
-
-  const routes = [];
-
-  function walk(node, nodes, values, visited) {
-    const next = positiveEdges.get(node) || [];
-
-    if (!next.length) {
-      routes.push({nodes: [...nodes], values: [...values]});
-      return;
-    }
-
-    for (const edge of next) {
-      if (visited.has(edge.node)) {
-        routes.push({nodes: [...nodes], values: [...values]});
-        continue;
-      }
-
-      const nextVisited = new Set(visited);
-      nextVisited.add(edge.node);
-
-      walk(
-        edge.node,
-        [...nodes, edge.node],
-        [...values, edge.value],
-        nextVisited
-      );
-    }
-  }
-
-  for (const start of starts) {
-    walk(start, [start], [], new Set([start]));
-  }
-
-  const usedEdges = new Set();
-
-  for (const route of routes) {
-    for (let i = 0; i < route.nodes.length - 1; i++) {
-      usedEdges.add(`${route.nodes[i]}>${route.nodes[i + 1]}`);
-    }
-  }
-
-  for (const [key, value] of flow) {
-    if (!value || value <= 0 || usedEdges.has(key)) continue;
-
-    const split = key.indexOf('>');
-    if (split < 0) continue;
-
-    routes.push({
-      nodes: [key.slice(0, split), key.slice(split + 1)],
-      values: [value]
-    });
-  }
-
-  return routes;
-}
-
-function namesForRoute(nodes) {
-  const names = new Set();
-
-  for (const node of nodes) {
-    const set = state.regionByNode.get(node);
-    if (!set) continue;
-
-    for (const raw of set) {
-      const key = String(raw).trim();
-      if (key && key !== 'ВСЕГО') {
-        names.add(DISPLAY_NAME[key] || key);
-      }
-    }
-  }
-
-  return [...names];
-}
-
 function renderYear(year, animate = state.playing) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
@@ -507,9 +405,11 @@ function renderYear(year, animate = state.playing) {
   const { flow } = calculateFlows(state.currentYear);
   const values = [...flow.values()].filter(v => v > 0);
   const max = Math.max(...values, 1);
+  const speedClass = `flow-dash-speed-${state.speedIndex}`;
 
-  // Основная сеть: отдельные участки сохраняются,
-  // поэтому сохраняется индивидуальная толщина каждого ребра.
+  // Вся сеть рисуется одним проходом: каждое ребро сохраняет свою
+  // индивидуальную толщину и при этом само «бежит» пунктиром через CSS
+  // (аналог demo Leaflet.Path.DashFlow) — без отдельного оверлея поверх.
   for (const [key, value] of flow) {
     if (value <= 0) continue;
 
@@ -528,10 +428,11 @@ function renderYear(year, animate = state.playing) {
       {
         weight: weightFor(value, max),
         color: CONFIG.colors.flow,
-        opacity: 0.86,
+        opacity: 0.9,
         lineCap: 'round',
         lineJoin: 'round',
-        interactive: true
+        interactive: true,
+        className: animate ? `flow-dash ${speedClass}` : ''
       }
     );
 
@@ -545,65 +446,9 @@ function renderYear(year, animate = state.playing) {
     }
 
     path.on('mouseover', () => path.setStyle({opacity: 1}));
-    path.on('mouseout', () => path.setStyle({opacity: 0.86}));
+    path.on('mouseout', () => path.setStyle({opacity: 0.9}));
 
     path.addTo(flowLayer);
-  }
-
-  // Анимация: по каждой цепочке узлов бежит линия с CSS-пунктиром,
-  // «текущим» вдоль маршрута (аналог demo Leaflet.Path.DashFlow).
-  if (animate) {
-    const routes = buildContinuousRoutes(flow);
-    const speedClass = `flow-dash-speed-${state.speedIndex}`;
-
-    for (const route of routes) {
-      if (!route.nodes || route.nodes.length < 2) continue;
-
-      const coordinates = [];
-
-      for (const nodeId of route.nodes) {
-        const node = state.nodes.get(nodeId);
-        if (!node) continue;
-        coordinates.push([node.lat, node.lon]);
-      }
-
-      if (coordinates.length < 2) continue;
-
-      const positiveValues = route.values.filter(v => v > 0);
-      const routeValue = positiveValues.length
-        ? Math.min(...positiveValues)
-        : 0;
-
-      const animatedPath = L.polyline(coordinates, {
-        weight: weightFor(routeValue, max),
-        color: CONFIG.colors.flow,
-        opacity: 0.9,
-        lineCap: 'round',
-        lineJoin: 'round',
-        className: `flow-dash ${speedClass}`
-      });
-
-      const names = namesForRoute(route.nodes);
-
-      if (names.length) {
-        animatedPath.bindPopup(
-          `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
-          {closeButton: true}
-        );
-      }
-
-      animatedPath.on(
-        'mouseover',
-        () => animatedPath.setStyle({opacity: 1})
-      );
-
-      animatedPath.on(
-        'mouseout',
-        () => animatedPath.setStyle({opacity: 0.9})
-      );
-
-      animatedPath.addTo(flowLayer);
-    }
   }
 
   state.flowsVisible = true;
