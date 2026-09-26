@@ -469,39 +469,245 @@ function buildYearButtons() {
 }
 
 
+function stopBubbleAnimations() {
+  for (const item of (state.bubbleAnimations || [])) {
+    if (item.raf) cancelAnimationFrame(item.raf);
+    if (item.marker) animationLayer.removeLayer(item.marker);
+  }
+  state.bubbleAnimations = [];
+  if (typeof animationLayer !== 'undefined' && map.hasLayer(animationLayer)) {
+    map.removeLayer(animationLayer);
+  }
+}
+
 function pauseAnimation() {
-  state.playing=false;
-  if(state.timer)clearInterval(state.timer);
-  state.timer=null;
-  flowLayer.eachLayer(layer=>{if(layer.pause)layer.pause();});
-  state.flowsVisible=false;
-  if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);
+  state.playing = false;
+  if (state.timer) clearInterval(state.timer);
+  state.timer = null;
+  stopBubbleAnimations();
   updateAnimationButton();
 }
 
+/*
+  Строим непрерывные маршруты для анимации.
+  Один пузырёк проходит сразу через несколько последовательных узлов.
+  Границы маршрута:
+  - узел исхода;
+  - узел слияния;
+  - узел разветвления;
+  - конечный узел водворения;
+  - тупиковый узел.
+*/
+function buildContinuousRoutes(flow) {
+  const outgoing = new Map();
+  const incoming = new Map();
+  const activeEdges = [];
+
+  for (const [key, value] of flow) {
+    if (!(value > 0)) continue;
+    const i = key.indexOf('>');
+    if (i < 0) continue;
+
+    const a = key.slice(0, i);
+    const b = key.slice(i + 1);
+
+    activeEdges.push({a, b, value});
+
+    if (!outgoing.has(a)) outgoing.set(a, []);
+    outgoing.get(a).push({node: b, value});
+
+    if (!incoming.has(b)) incoming.set(b, []);
+    incoming.get(b).push(a);
+  }
+
+  const sources = new Set();
+  for (const row of state.fromRows) {
+    const node = String(row.EDGE || '').trim();
+    if (node && outgoing.has(node)) sources.add(node);
+  }
+
+  const destinations = new Set(state.destinationNodes || []);
+  const boundary = new Set();
+
+  for (const [node, next] of outgoing) {
+    const inCount = (incoming.get(node) || []).length;
+    const outCount = next.length;
+
+    if (sources.has(node) || inCount !== 1 || outCount !== 1 || destinations.has(node)) {
+      boundary.add(node);
+    }
+  }
+
+  const routes = [];
+  const used = new Set();
+
+  function id(a, b) { return `${a}>${b}`; }
+
+  function follow(start, first) {
+    const nodes = [start];
+    const values = [];
+    let current = start;
+    let edge = first;
+
+    while (edge) {
+      const edgeKey = id(current, edge.node);
+      if (used.has(edgeKey)) break;
+      used.add(edgeKey);
+
+      nodes.push(edge.node);
+      values.push(edge.value);
+      current = edge.node;
+
+      if (current !== start && boundary.has(current)) break;
+
+      const next = outgoing.get(current) || [];
+      if (next.length !== 1) break;
+      edge = next[0];
+    }
+
+    if (nodes.length >= 2) routes.push({nodes, values});
+  }
+
+  for (const startNode of boundary) {
+    for (const edge of (outgoing.get(startNode) || [])) {
+      follow(startNode, edge);
+    }
+  }
+
+  // Гарантируем, что ни одно активное ребро не осталось без маршрута.
+  for (const edge of activeEdges) {
+    if (!used.has(id(edge.a, edge.b))) {
+      follow(edge.a, edge);
+    }
+  }
+
+  return routes;
+}
+
+function makeRouteGeometry(nodes) {
+  const points = [];
+  for (const id of nodes) {
+    const n = state.nodes.get(id);
+    if (n) points.push([n.lat, n.lon]);
+  }
+  if (points.length < 2) return null;
+
+  const projected = points.map(p => map.project(L.latLng(p[0], p[1]), 0));
+  const distances = [0];
+  let total = 0;
+
+  for (let i = 1; i < projected.length; i++) {
+    total += Math.hypot(
+      projected[i].x - projected[i - 1].x,
+      projected[i].y - projected[i - 1].y
+    );
+    distances.push(total);
+  }
+
+  return total > 0 ? {points, distances, total} : null;
+}
+
+function pointOnRoute(g, progress) {
+  const p = Math.max(0, Math.min(1, progress));
+  const target = g.total * p;
+
+  let i = 1;
+  while (i < g.distances.length && g.distances[i] < target) i++;
+
+  if (i >= g.distances.length) return g.points[g.points.length - 1];
+
+  const d0 = g.distances[i - 1];
+  const d1 = g.distances[i];
+  const t = d1 === d0 ? 0 : (target - d0) / (d1 - d0);
+
+  const A = g.points[i - 1];
+  const B = g.points[i];
+
+  return [
+    A[0] + (B[0] - A[0]) * t,
+    A[1] + (B[1] - A[1]) * t
+  ];
+}
+
+function createBubbleAnimations() {
+  stopBubbleAnimations();
+
+  const {flow} = calculateFlows(state.currentYear);
+  const routes = buildContinuousRoutes(flow);
+  if (!routes.length) return;
+
+  state.flowsVisible = true;
+  if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
+  animationLayer.addTo(map);
+
+  const maxFlow = Math.max(getFlowYearMaximum(state.currentYear), 1);
+
+  for (const route of routes) {
+    const geometry = makeRouteGeometry(route.nodes);
+    if (!geometry) continue;
+
+    const marker = L.circleMarker(geometry.points[0], {
+      radius: 5,
+      color: CONFIG.colors.flow,
+      weight: 2,
+      opacity: 1,
+      fillColor: '#ffffff',
+      fillOpacity: 1,
+      interactive: false
+    }).addTo(animationLayer);
+
+    const vals = route.values.filter(v => v > 0);
+    const routeValue = vals.length ? Math.min(...vals) : 1;
+    const factor = Math.max(0.05, Math.min(1, routeValue / maxFlow));
+
+    // Весь маршрут является одной анимацией.
+    const duration = 3000 + geometry.total * 6 /
+      (0.6 + 0.8 * Math.sqrt(factor));
+
+    const item = {
+      marker,
+      geometry,
+      duration,
+      start: performance.now() - Math.random() * duration,
+      raf: null
+    };
+
+    function frame(now) {
+      if (!state.playing) return;
+
+      const progress = Math.max(
+        0,
+        Math.min(1, ((now - item.start) % item.duration) / item.duration)
+      );
+
+      const point = pointOnRoute(item.geometry, progress);
+      if (point) marker.setLatLng(point);
+
+      item.raf = requestAnimationFrame(frame);
+    }
+
+    item.raf = requestAnimationFrame(frame);
+    state.bubbleAnimations.push(item);
+  }
+
+  updateAnimationButton();
+}
 
 function startAnimation() {
-  state.flowsVisible=true;
-  if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
-  state.playing=true;
-  flowLayer.eachLayer(layer=>{if(layer.resume)layer.resume();});
+  state.playing = true;
+  createBubbleAnimations();
   updateAnimationButton();
 }
-
 
 function toggleSpeed() {
   state.speedIndex = (state.speedIndex + 1) % 3;
-  document.getElementById('speedBtn').textContent =
-    `Скорость: ×${[1, 2, 4][state.speedIndex]}`;
+  const speedBtn = document.getElementById('speedBtn');
+  if (speedBtn) speedBtn.textContent = `Скорость: ×${[1,2,4][state.speedIndex]}`;
 
-  // Rebuild only the selected year's flow paths with the new Ant Path delay.
   const wasPlaying = state.playing;
   renderYear(state.currentYear);
   if (wasPlaying) startAnimation();
 }
-
-
-
 
 const YEAR_TOTALS={1896:190302,1897:84733,1898:200080,1899:221034,1900:218552,1901:119557,1902:110396,1903:125444,1904:46719,1905:44029,1906:216646,1907:576211,1908:758770,1909:707077,1910:352950,1911:226062,1912:259585,1913:327430,1914:336409,1915:28185,1916:11201};
 function yearTotalText(){return `${state.currentYear} год - ${YEAR_TOTALS[state.currentYear]??0} переселенцев`;}
@@ -526,9 +732,8 @@ function changeYear(delta) {
   if(wasPlaying) startAnimation();
   else {
     state.playing=false;
-    state.flowsVisible=false;
-    if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
     updateAnimationButton();
+    updateFlowsButton();
   }
 }
 function updateAnimationButton() {
