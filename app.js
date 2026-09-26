@@ -1,8 +1,11 @@
 /* Interactive migration map — GitHub Pages */
 const CONFIG = {
   years: Array.from({length: 21}, (_, i) => 1896 + i),
-  animationInterval: [1600, 900, 450],
-  antDelay: [1400, 700, 280],
+  // Скорость «пузырьков», м/сек условного времени — чем больше, тем быстрее
+  // бежит поток; подбирается по индексу скорости (кнопка «Скорость: ×N»).
+  bubbleSpeed: [120000, 260000, 550000],
+  bubblesPerRoute: 3,
+  bubbleRadius: 4,
   colors: {
     flow: '#d85b36',
     boundary: '#7d8790',
@@ -139,24 +142,21 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const flowLayer = L.layerGroup().addTo(map);
 
-// Во время зума/панорамирования Leaflet непрерывно перепроецирует SVG-путь,
-// а Ant Path в это же время сдвигает dash-offset — конкуренция этих
-// перерисовок и даёт мерцание потока. Решение: на время движения карты
-// анимацию просто приостанавливаем и запускаем заново по его окончании.
+// Во время зума/панорамирования Leaflet непрерывно перепроецирует слой,
+// поэтому анимацию «пузырьков» на это время просто останавливаем и
+// перезапускаем по окончании движения — без рывка (см. startBubbles).
 let resumeAfterMove = false;
 
 map.on('zoomstart movestart', () => {
   if (!state.playing) return;
   resumeAfterMove = true;
-  flowLayer.eachLayer(layer => { if (layer.pause) layer.pause(); });
+  pauseBubbles();
 });
 
 map.on('zoomend moveend', () => {
   if (!resumeAfterMove) return;
   resumeAfterMove = false;
-  if (state.playing) {
-    flowLayer.eachLayer(layer => { if (layer.resume) layer.resume(); });
-  }
+  if (state.playing) startBubbles();
 });
 
 const baseLayer = L.geoJSON(null, {
@@ -484,6 +484,114 @@ function namesForRoute(nodes) {
   return [...names];
 }
 
+// ============================================================
+// АНИМАЦИЯ ПОТОКА: бегущие кружки-«пузырьки» вдоль маршрута
+// ============================================================
+
+const bubbleAnim = {
+  raf: null,
+  lastTime: null,
+  paused: true,
+  routes: [] // { latlngs, cumDist, total, duration, bubbles: [{marker, phase}] }
+};
+
+// Кумулятивное расстояние (в метрах) от начала маршрута до каждой точки.
+function distanceAlong(latlngs) {
+  const cum = [0];
+  for (let i = 1; i < latlngs.length; i++) {
+    cum.push(cum[i - 1] + latlngs[i - 1].distanceTo(latlngs[i]));
+  }
+  return cum;
+}
+
+// Точка на маршруте, соответствующая доле пути frac (0..1).
+function pointAtFraction(latlngs, cumDist, total, frac) {
+  if (total <= 0) return latlngs[0];
+  const target = frac * total;
+  let i = 1;
+  while (i < cumDist.length && cumDist[i] < target) i++;
+  if (i >= latlngs.length) return latlngs[latlngs.length - 1];
+  const segStart = cumDist[i - 1], segEnd = cumDist[i];
+  const segFrac = segEnd > segStart ? (target - segStart) / (segEnd - segStart) : 0;
+  const a = latlngs[i - 1], b = latlngs[i];
+  return L.latLng(
+    a.lat + (b.lat - a.lat) * segFrac,
+    a.lng + (b.lng - a.lng) * segFrac
+  );
+}
+
+// Регистрирует маршрут в bubbleAnim и создаёт для него N кружков-меток,
+// равномерно расставленных по длине (в фазе 0..1), чтобы получился
+// непрерывный «ручеёк» пузырьков.
+function addBubbleRoute(latlngs) {
+  const cumDist = distanceAlong(latlngs);
+  const total = cumDist[cumDist.length - 1];
+  if (total <= 0) return;
+
+  const duration = (total / CONFIG.bubbleSpeed[state.speedIndex]) * 1000;
+  const count = CONFIG.bubblesPerRoute;
+  const bubbles = [];
+
+  for (let i = 0; i < count; i++) {
+    const phase = i / count;
+    const marker = L.circleMarker(
+      pointAtFraction(latlngs, cumDist, total, phase),
+      {
+        radius: CONFIG.bubbleRadius,
+        color: '#ffffff',
+        weight: 1,
+        fillColor: CONFIG.colors.flow,
+        fillOpacity: 0.95,
+        interactive: false,
+        pane: 'markerPane'
+      }
+    );
+    marker.addTo(flowLayer);
+    bubbles.push({marker, phase});
+  }
+
+  bubbleAnim.routes.push({latlngs, cumDist, total, duration, bubbles});
+}
+
+function bubbleTick(timestamp) {
+  if (bubbleAnim.paused) return;
+  if (bubbleAnim.lastTime == null) bubbleAnim.lastTime = timestamp;
+  const dt = timestamp - bubbleAnim.lastTime;
+  bubbleAnim.lastTime = timestamp;
+
+  for (const route of bubbleAnim.routes) {
+    const advance = dt / route.duration;
+    for (const b of route.bubbles) {
+      b.phase = (b.phase + advance) % 1;
+      b.marker.setLatLng(
+        pointAtFraction(route.latlngs, route.cumDist, route.total, b.phase)
+      );
+    }
+  }
+
+  bubbleAnim.raf = requestAnimationFrame(bubbleTick);
+}
+
+// Всегда перезапускает цикл «с чистого листа» по времени (lastTime = null),
+// чтобы после паузы (зум/пан/стоп) не было рывка из-за накопившейся dt.
+function startBubbles() {
+  pauseBubbles();
+  bubbleAnim.paused = false;
+  bubbleAnim.lastTime = null;
+  bubbleAnim.raf = requestAnimationFrame(bubbleTick);
+}
+
+function pauseBubbles() {
+  bubbleAnim.paused = true;
+  if (bubbleAnim.raf) cancelAnimationFrame(bubbleAnim.raf);
+  bubbleAnim.raf = null;
+}
+
+function clearBubbles() {
+  pauseBubbles();
+  bubbleAnim.routes = [];
+}
+
 function renderYear(year, animate = state.playing) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
@@ -499,6 +607,7 @@ function renderYear(year, animate = state.playing) {
   });
 
   flowLayer.clearLayers();
+  clearBubbles();
 
   const { flow } = calculateFlows(state.currentYear);
   const values = [...flow.values()].filter(v => v > 0);
@@ -546,66 +655,29 @@ function renderYear(year, animate = state.playing) {
     path.addTo(flowLayer);
   }
 
-  // Анимация: один Ant Path проходит по всей цепочке узлов.
+  // Анимация: по каждой цепочке узлов бежит несколько кружков-«пузырьков».
   if (animate) {
     const routes = buildContinuousRoutes(flow);
 
     for (const route of routes) {
       if (!route.nodes || route.nodes.length < 2) continue;
 
-      const coordinates = [];
+      const latlngs = [];
 
       for (const nodeId of route.nodes) {
         const node = state.nodes.get(nodeId);
         if (!node) continue;
-        coordinates.push([node.lat, node.lon]);
+        latlngs.push(L.latLng(node.lat, node.lon));
       }
 
-      if (coordinates.length < 2) continue;
+      if (latlngs.length < 2) continue;
 
-      const positiveValues = route.values.filter(v => v > 0);
-      const routeValue = positiveValues.length
-        ? Math.min(...positiveValues)
-        : 0;
-
-      const animatedPath = L.polyline.antPath(
-        coordinates,
-        {
-          delay: CONFIG.antDelay[state.speedIndex],
-          dashArray: [10, 20],
-          weight: weightFor(routeValue, max),
-          color: CONFIG.colors.flow,
-          pulseColor: '#ffffff',
-          paused: !state.playing,
-          hardwareAccelerated: true,
-          reverse: false,
-          opacity: 0.86,
-          lineCap: 'round',
-          lineJoin: 'round'
-        }
-      );
-
-      const names = namesForRoute(route.nodes);
-
-      if (names.length) {
-        animatedPath.bindPopup(
-          `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
-          {closeButton: true}
-        );
-      }
-
-      animatedPath.on(
-        'mouseover',
-        () => animatedPath.setStyle({opacity: 1})
-      );
-
-      animatedPath.on(
-        'mouseout',
-        () => animatedPath.setStyle({opacity: 0.86})
-      );
-
-      animatedPath.addTo(flowLayer);
+      addBubbleRoute(latlngs);
     }
+
+    startBubbles();
+  } else {
+    pauseBubbles();
   }
 
   state.flowsVisible = true;
@@ -660,7 +732,7 @@ function pauseAnimation() {
   state.playing=false;
   if(state.timer)clearInterval(state.timer);
   state.timer=null;
-  flowLayer.eachLayer(layer=>{if(layer.pause)layer.pause();});
+  pauseBubbles();
   state.flowsVisible=false;
   if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);
   updateAnimationButton();
@@ -671,7 +743,7 @@ function startAnimation() {
   state.flowsVisible=true;
   if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
   state.playing=true;
-  flowLayer.eachLayer(layer=>{if(layer.resume)layer.resume();});
+  startBubbles();
   updateAnimationButton();
 }
 
