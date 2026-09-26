@@ -125,7 +125,6 @@ const state = {
   flowsVisible: true,
   speedIndex: 0,
   timer: null,
-  bubbleAnimations: [],
   chart: null,
   chartKind: 'from',
   mapKind: null
@@ -139,7 +138,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const flowLayer = L.layerGroup().addTo(map);
-const animationLayer = L.layerGroup();
 
 const baseLayer = L.geoJSON(null, {
   style: {
@@ -366,6 +364,7 @@ function weightFor(value,max,year=state.currentYear){
 function renderYear(year) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
+
   updateYearInfo();
   updateYearArrowButtons();
 
@@ -373,63 +372,74 @@ function renderYear(year) {
     btn.classList.toggle('active', Number(btn.dataset.year) === state.currentYear);
   });
 
-  stopBubbleAnimations();
   flowLayer.clearLayers();
 
-  const {flow} = calculateFlows(state.currentYear);
+  const { flow } = calculateFlows(state.currentYear);
   const values = [...flow.values()].filter(v => v > 0);
   const max = Math.max(...values, 1);
 
+  // Every calculated edge is rendered. The network is not reconstructed
+  // from neighbouring nodes during drawing, so branches and merges remain intact.
   for (const [key, value] of flow) {
     if (value <= 0) continue;
-    const split = key.indexOf('>');
-    if (split < 0) continue;
 
-    const a = key.slice(0, split), b = key.slice(split + 1);
-    const A = state.nodes.get(a), B = state.nodes.get(b);
+    const split = key.indexOf('>');
+    const a = key.slice(0, split);
+    const b = key.slice(split + 1);
+    const A = state.nodes.get(a);
+    const B = state.nodes.get(b);
     if (!A || !B) continue;
 
-    const path = L.polyline([[A.lat,A.lon],[B.lat,B.lon]], {
-      weight: weightFor(value, max),
-      color: CONFIG.colors.flow,
-      opacity: 0.86,
-      lineCap: 'round',
-      lineJoin: 'round',
-      interactive: true
-    });
+    const path = L.polyline.antPath(
+      [[A.lat, A.lon], [B.lat, B.lon]],
+      {
+        delay: CONFIG.antDelay[state.speedIndex],
+        dashArray: [10, 20],
+        weight: weightFor(value, max),
+        color: CONFIG.colors.flow,
+        pulseColor: '#ffffff',
+        paused: !state.playing,
+        hardwareAccelerated: true,
+        reverse: false,
+        opacity: 0.86,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }
+    );
 
-    const names = namesForSegment(a,b);
+    const names = namesForSegment(a, b);
     if (names.length) {
-      path.bindPopup(`<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
-                     {closeButton:true});
+      path.bindPopup(
+        `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
+        { closeButton: true }
+      );
     }
-    path.on('mouseover', () => path.setStyle({opacity:1}));
-    path.on('mouseout', () => path.setStyle({opacity:0.86}));
+
+    path.on('mouseover', () => path.setStyle({ opacity: 1 }));
+    path.on('mouseout', () => path.setStyle({ opacity: 0.86 }));
     path.addTo(flowLayer);
   }
 
-  if (state.flowsVisible) {
-    if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
-  } else if (map.hasLayer(flowLayer)) {
-    map.removeLayer(flowLayer);
-  }
+  state.flowsVisible=true;
+  if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
 
   document.getElementById('status').textContent = '';
 
   const tablePanel = document.getElementById('tablePanel');
   if (tablePanel && !tablePanel.classList.contains('hidden')) {
-    const title = document.getElementById('tableTitle');
-    const kind = title ? title.dataset.kind : '';
+    const kind = document.getElementById('tableTitle').dataset.kind;
     if (kind) showTable(kind);
   }
 
   const chartsPanel = document.getElementById('chartsPanel');
   if (chartsPanel && !chartsPanel.classList.contains('hidden')) {
     showChart(state.chartKind);
-    updateChartTotal();
+  updateChartTotal();
   }
 
-  if (state.mapKind) applyMapTheme(state.mapKind);
+  if (state.mapKind) {
+    applyMapTheme(state.mapKind);
+  }
 }
 
 
@@ -446,7 +456,12 @@ function buildYearButtons() {
       renderYear(year);
 
       if(wasPlaying) startAnimation();
-      else { state.playing = false; updateFlowsButton(); updateAnimationButton(); }
+      else {
+        state.playing=false;
+        state.flowsVisible=false;
+        if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
+        updateAnimationButton();
+      }
     };
     box.appendChild(btn);
   });
@@ -454,159 +469,39 @@ function buildYearButtons() {
 }
 
 
-function stopBubbleAnimations() {
-  for (const item of state.bubbleAnimations) {
-    if (item.raf) cancelAnimationFrame(item.raf);
-    if (item.marker) animationLayer.removeLayer(item.marker);
-  }
-  state.bubbleAnimations = [];
-  if (map.hasLayer(animationLayer)) map.removeLayer(animationLayer);
-}
-
 function pauseAnimation() {
-  state.playing = false;
-  if (state.timer) clearInterval(state.timer);
-  state.timer = null;
-  stopBubbleAnimations();
+  state.playing=false;
+  if(state.timer)clearInterval(state.timer);
+  state.timer=null;
+  flowLayer.eachLayer(layer=>{if(layer.pause)layer.pause();});
+  state.flowsVisible=false;
+  if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);
   updateAnimationButton();
 }
 
-function buildContinuousRoutes(flow) {
-  const outgoing = new Map(), incoming = new Map();
-
-  for (const [key,value] of flow) {
-    if (!value || value <= 0) continue;
-    const i = key.indexOf('>');
-    if (i < 0) continue;
-    const a = key.slice(0,i), b = key.slice(i+1);
-
-    if (!outgoing.has(a)) outgoing.set(a,[]);
-    outgoing.get(a).push({node:b,value});
-
-    if (!incoming.has(b)) incoming.set(b,[]);
-    incoming.get(b).push(a);
-  }
-
-  const starts = new Set();
-  for (const [node] of outgoing) {
-    if (!incoming.has(node)) starts.add(node);
-  }
-  for (const row of state.fromRows) {
-    const node = String(row.EDGE || '').trim();
-    if (node && outgoing.has(node)) starts.add(node);
-  }
-
-  const routes = [];
-  function walk(node,nodes,values,visited) {
-    const next = outgoing.get(node) || [];
-    if (!next.length) {
-      routes.push({nodes:[...nodes],values:[...values]});
-      return;
-    }
-    for (const edge of next) {
-      if (visited.has(edge.node)) continue;
-      const v = new Set(visited);
-      v.add(edge.node);
-      walk(edge.node,[...nodes,edge.node],[...values,edge.value],v);
-    }
-  }
-  for (const start of starts) walk(start,[start],[],new Set([start]));
-  return routes;
-}
-
-function makeRouteGeometry(nodes) {
-  const points = [];
-  for (const id of nodes) {
-    const n = state.nodes.get(id);
-    if (n) points.push([n.lat,n.lon]);
-  }
-  if (points.length < 2) return null;
-
-  const projected = points.map(p => map.project(L.latLng(p[0],p[1]),0));
-  const distances = [0];
-  let total = 0;
-  for (let i=1;i<projected.length;i++) {
-    total += Math.hypot(projected[i].x-projected[i-1].x,
-                        projected[i].y-projected[i-1].y);
-    distances.push(total);
-  }
-  return total > 0 ? {points,distances,total} : null;
-}
-
-function pointOnRoute(g,progress) {
-  const p = Math.max(0,Math.min(1,progress));
-  const target = g.total*p;
-  let i=1;
-  while (i<g.distances.length && g.distances[i] < target) i++;
-  if (i >= g.distances.length) return g.points[g.points.length-1];
-
-  const d0=g.distances[i-1], d1=g.distances[i];
-  const t=d1===d0 ? 0 : (target-d0)/(d1-d0);
-  const A=g.points[i-1], B=g.points[i];
-  return [A[0]+(B[0]-A[0])*t, A[1]+(B[1]-A[1])*t];
-}
-
-function createBubbleAnimations() {
-  stopBubbleAnimations();
-
-  const {flow} = calculateFlows(state.currentYear);
-  const routes = buildContinuousRoutes(flow);
-  if (!routes.length) return;
-
-  state.flowsVisible = true;
-  if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
-  updateFlowsButton();
-  animationLayer.addTo(map);
-
-  for (const route of routes) {
-    const geometry = makeRouteGeometry(route.nodes);
-    if (!geometry) continue;
-
-    const marker = L.circleMarker(geometry.points[0], {
-      radius:5,
-      color:CONFIG.colors.flow,
-      weight:2,
-      opacity:1,
-      fillColor:'#ffffff',
-      fillOpacity:1,
-      interactive:false
-    }).addTo(animationLayer);
-
-    const values=route.values.filter(v=>v>0);
-    const value=values.length ? Math.min(...values) : 1;
-    const reference=Math.max(getFlowYearMaximum(state.currentYear),value,1);
-    const duration=4200/(0.75+1.25*Math.sqrt(value/reference));
-
-    const item={marker,geometry,duration,
-      start:performance.now()-Math.random()*duration,raf:null};
-
-    function frame(now) {
-      if (!state.playing) return;
-      const progress=Math.max(0,Math.min(1,
-        ((now-item.start)%item.duration)/item.duration));
-      const point=pointOnRoute(item.geometry,progress);
-      if (point) marker.setLatLng(point);
-      item.raf=requestAnimationFrame(frame);
-    }
-    item.raf=requestAnimationFrame(frame);
-    state.bubbleAnimations.push(item);
-  }
-}
 
 function startAnimation() {
-  state.playing = true;
-  createBubbleAnimations();
+  state.flowsVisible=true;
+  if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
+  state.playing=true;
+  flowLayer.eachLayer(layer=>{if(layer.resume)layer.resume();});
   updateAnimationButton();
 }
 
+
 function toggleSpeed() {
-  state.speedIndex=(state.speedIndex+1)%3;
-  const speedBtn=document.getElementById('speedBtn');
-  if (speedBtn) speedBtn.textContent=`Скорость: ×${[1,2,4][state.speedIndex]}`;
-  const wasPlaying=state.playing;
+  state.speedIndex = (state.speedIndex + 1) % 3;
+  document.getElementById('speedBtn').textContent =
+    `Скорость: ×${[1, 2, 4][state.speedIndex]}`;
+
+  // Rebuild only the selected year's flow paths with the new Ant Path delay.
+  const wasPlaying = state.playing;
   renderYear(state.currentYear);
   if (wasPlaying) startAnimation();
 }
+
+
+
 
 const YEAR_TOTALS={1896:190302,1897:84733,1898:200080,1899:221034,1900:218552,1901:119557,1902:110396,1903:125444,1904:46719,1905:44029,1906:216646,1907:576211,1908:758770,1909:707077,1910:352950,1911:226062,1912:259585,1913:327430,1914:336409,1915:28185,1916:11201};
 function yearTotalText(){return `${state.currentYear} год - ${YEAR_TOTALS[state.currentYear]??0} переселенцев`;}
@@ -629,7 +524,12 @@ function changeYear(delta) {
   renderYear(ys[ni]);
 
   if(wasPlaying) startAnimation();
-  else { state.playing = false; updateFlowsButton(); updateAnimationButton(); }
+  else {
+    state.playing=false;
+    state.flowsVisible=false;
+    if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
+    updateAnimationButton();
+  }
 }
 function updateAnimationButton() {
   const btn=document.getElementById('animationBtn');
@@ -648,16 +548,10 @@ function updateFlowsButton() {
 }
 
 function setFlowsVisible(visible) {
-  state.flowsVisible = Boolean(visible);
-
-  if (state.flowsVisible) {
-    if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
-  } else {
-    if (map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
-    if (state.playing) pauseAnimation();
-  }
-
-  updateFlowsButton();
+  state.flowsVisible=Boolean(visible);
+  if(state.flowsVisible){if(!map.hasLayer(flowLayer))flowLayer.addTo(map);}
+  else{if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);}
+  updateAnimationButton();
 }
 
 function setAnimationVisible(enabled) {
@@ -1006,7 +900,13 @@ document.getElementById('panelToggle').onclick = () => {
     panel.classList.contains('collapsed') ? '☰' : '×';
 };
 
-
+const animationBtn = document.getElementById('animationBtn');
+if (animationBtn) {
+  animationBtn.onclick = () => {
+    if (state.playing) pauseAnimation();
+    else startAnimation();
+  };
+}
 
 document.getElementById('tablesBtn').onclick = () => {
   showOnlyPanel('tablesPanel');
@@ -1051,15 +951,5 @@ document.getElementById('closeTable').onclick = () => {
 
 document.getElementById('prevYearBtn').onclick=()=>changeYear(-1);
 document.getElementById('nextYearBtn').onclick=()=>changeYear(1);
-
-
-document.getElementById('flowsBtn').onclick = () => {
-  setFlowsVisible(!state.flowsVisible);
-};
-
-document.getElementById('animationBtn').onclick = () => {
-  if (state.playing) pauseAnimation();
-  else startAnimation();
-};
 
 init();
