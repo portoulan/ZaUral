@@ -1067,13 +1067,10 @@ document.getElementById('panelToggle').onclick = () => {
     panel.classList.contains('collapsed') ? '☰' : '×';
 };
 
-const animationBtn = document.getElementById('animationBtn');
-if (animationBtn) {
-  animationBtn.onclick = () => {
-    if (state.playing) pauseAnimation();
-    else startAnimation();
-  };
-}
+document.getElementById('animationBtn').onclick=()=>{
+  if(state.playing) pauseAnimation();
+  else { renderYear(state.currentYear); startAnimation(); }
+};
 
 document.getElementById('tablesBtn').onclick = () => {
   showOnlyPanel('tablesPanel');
