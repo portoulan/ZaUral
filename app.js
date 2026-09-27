@@ -2,7 +2,7 @@
 const CONFIG = {
   years: Array.from({length: 21}, (_, i) => 1896 + i),
   colors: {
-    flow: '#4682B4',
+    flow: '#d85b36',
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
   }
@@ -148,7 +148,7 @@ const flowLayer = L.layerGroup().addTo(map);
   style.id = 'flow-dash-styles';
   style.textContent = `
     .flow-dash {
-      stroke-dasharray: 4 8;
+      stroke-dasharray: 10 14;
       animation-name: flowDash;
       animation-timing-function: linear;
       animation-iteration-count: infinite;
@@ -157,7 +157,7 @@ const flowLayer = L.layerGroup().addTo(map);
     .flow-dash-speed-1 { animation-duration: 1.1s; }
     .flow-dash-speed-2 { animation-duration: 0.55s; }
     @keyframes flowDash {
-      to { stroke-dashoffset: -12; }
+      to { stroke-dashoffset: -24; }
     }
   `;
   document.head.appendChild(style);
@@ -529,7 +529,7 @@ function renderYear(year, animate = state.playing) {
     const path = L.polyline(coordinates, {
       weight: weightFor(route.value, max),
       color: CONFIG.colors.flow,
-      opacity: 0.6,
+      opacity: 0.9,
       lineCap: 'round',
       lineJoin: 'round',
       interactive: true,
@@ -545,8 +545,8 @@ function renderYear(year, animate = state.playing) {
       );
     }
 
-    path.on('mouseover', () => path.setStyle({opacity: 0.9}));
-    path.on('mouseout', () => path.setStyle({opacity: 0.6}));
+    path.on('mouseover', () => path.setStyle({opacity: 1}));
+    path.on('mouseout', () => path.setStyle({opacity: 0.9}));
 
     path.addTo(flowLayer);
   }
@@ -925,10 +925,14 @@ function showChart(kind) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: {top: 0, right: 0, bottom: 0, left: 0}
+      },
       plugins: {
         legend: {
           display: true,
           position: 'right',
+          align: 'center',
           labels: {
             generateLabels: chart => chart.data.labels.map((label, i) => ({
       text: legendLabels[i],
@@ -950,7 +954,8 @@ function showChart(kind) {
 },
         title: {
           display: true,
-          text: `${kind === 'from' ? 'Исход' : 'Водворение'} — ${state.currentYear}`
+          text: `${kind === 'from' ? 'Исход' : 'Водворение'} — ${state.currentYear}`,
+          padding: {top: 4, bottom: 4}
         },
         tooltip: {
           callbacks: {
