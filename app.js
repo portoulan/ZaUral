@@ -2,7 +2,7 @@
 const CONFIG = {
   years: Array.from({length: 21}, (_, i) => 1896 + i),
   colors: {
-    flow: '#d85b36',
+    flow: '#00CED1',
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
   }
@@ -148,7 +148,7 @@ const flowLayer = L.layerGroup().addTo(map);
   style.id = 'flow-dash-styles';
   style.textContent = `
     .flow-dash {
-      stroke-dasharray: 10 14;
+      stroke-dasharray: 5 19;
       animation-name: flowDash;
       animation-timing-function: linear;
       animation-iteration-count: infinite;
