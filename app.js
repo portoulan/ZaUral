@@ -148,7 +148,7 @@ const flowLayer = L.layerGroup().addTo(map);
   style.id = 'flow-dash-styles';
   style.textContent = `
     .flow-dash {
-      stroke-dasharray: 5 43;
+      stroke-dasharray: 4 8;
       animation-name: flowDash;
       animation-timing-function: linear;
       animation-iteration-count: infinite;
@@ -157,7 +157,7 @@ const flowLayer = L.layerGroup().addTo(map);
     .flow-dash-speed-1 { animation-duration: 1.1s; }
     .flow-dash-speed-2 { animation-duration: 0.55s; }
     @keyframes flowDash {
-      to { stroke-dashoffset: -48; }
+      to { stroke-dashoffset: -12; }
     }
   `;
   document.head.appendChild(style);
