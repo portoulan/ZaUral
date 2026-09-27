@@ -565,11 +565,63 @@ function renderYear(year, animate = state.playing) {
   const values = [...flow.values()].filter(v => v > 0);
   const max = Math.max(...values, 1);
   const speedClass = `flow-dash-speed-${state.speedIndex}`;
+  const dashClass = animate ? `flow-dash ${speedClass}` : '';
 
-  // Базовый слой: КАЖДОЕ ребро рисуется отдельной линией со своей
-  // собственной толщиной по значению потока — это сохраняет исходную
-  // толщину сети (как до объединения рёбер в цепочки).
-  for (const [key, value] of flow) {
+  // Сначала вынимаем из графа два заданных сквозных маршрута — их рёбра
+  // рисуются ОДНОЙ линией, чтобы пунктир шёл по ним непрерывно, без
+  // разрывов на стыках узлов.
+  const routeFlow = new Map(flow);
+  const forcedRoutes = extractForcedRoutes(routeFlow);
+
+  for (const route of forcedRoutes) {
+    if (!route.nodes || route.nodes.length < 2) continue;
+
+    const coordinates = [];
+
+    for (const nodeId of route.nodes) {
+      const node = state.nodes.get(nodeId);
+      if (!node) continue;
+      coordinates.push([node.lat, node.lon]);
+    }
+
+    if (coordinates.length < 2) continue;
+
+    const positiveValues = route.values.filter(v => v > 0);
+    const routeValue = positiveValues.length
+      ? Math.min(...positiveValues)
+      : 0;
+
+    const path = L.polyline(coordinates, {
+      weight: weightFor(routeValue, max),
+      color: CONFIG.colors.flow,
+      opacity: 0.9,
+      lineCap: 'round',
+      lineJoin: 'round',
+      interactive: true,
+      className: dashClass
+    });
+
+    const names = namesForRoute(route.nodes);
+
+    if (names.length) {
+      path.bindPopup(
+        `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
+        {closeButton: true}
+      );
+    }
+
+    path.on('mouseover', () => path.setStyle({opacity: 1}));
+    path.on('mouseout', () => path.setStyle({opacity: 0.9}));
+
+    path.addTo(flowLayer);
+  }
+
+  // Остальная сеть — по отдельному ребру на линию, со своей толщиной по
+  // значению именно этого ребра. Каждый такой поток естественным образом
+  // начинается там, где выходит из другого потока, и заканчивается там,
+  // где в него входит (рёбра двух маршрутов выше уже удалены из routeFlow,
+  // поэтому здесь ничего не дублируется).
+  for (const [key, value] of routeFlow) {
     if (value <= 0) continue;
 
     const split = key.indexOf('>');
@@ -582,74 +634,32 @@ function renderYear(year, animate = state.playing) {
     const B = state.nodes.get(b);
     if (!A || !B) continue;
 
-    const basePath = L.polyline(
+    const path = L.polyline(
       [[A.lat, A.lon], [B.lat, B.lon]],
       {
         weight: weightFor(value, max),
         color: CONFIG.colors.flow,
-        opacity: 0.85,
+        opacity: 0.9,
         lineCap: 'round',
         lineJoin: 'round',
-        interactive: true
+        interactive: true,
+        className: dashClass
       }
     );
 
     const segmentNames = namesForSegment(a, b);
 
     if (segmentNames.length) {
-      basePath.bindPopup(
+      path.bindPopup(
         `<div class="region-popup">${segmentNames.map(escapeHtml).join('<br>')}</div>`,
         {closeButton: true}
       );
     }
 
-    basePath.on('mouseover', () => basePath.setStyle({opacity: 1}));
-    basePath.on('mouseout', () => basePath.setStyle({opacity: 0.85}));
+    path.on('mouseover', () => path.setStyle({opacity: 1}));
+    path.on('mouseout', () => path.setStyle({opacity: 0.9}));
 
-    basePath.addTo(flowLayer);
-  }
-
-  // Анимационный слой поверх: непрерывные цепочки узлов (от истока/точки
-  // слияния до конечной точки), по которым бежит CSS-пунктир одним
-  // движением через весь поток. На толщину сети не влияет — это лишь
-  // движущийся акцент поверх базового слоя, поэтому он не интерактивен
-  // и не перехватывает наведение/клик у базовых линий.
-  if (animate) {
-    const routeFlow = new Map(flow);
-    const forcedRoutes = extractForcedRoutes(routeFlow);
-    const routes = forcedRoutes.concat(buildContinuousRoutes(routeFlow));
-
-    for (const route of routes) {
-      if (!route.nodes || route.nodes.length < 2) continue;
-
-      const coordinates = [];
-
-      for (const nodeId of route.nodes) {
-        const node = state.nodes.get(nodeId);
-        if (!node) continue;
-        coordinates.push([node.lat, node.lon]);
-      }
-
-      if (coordinates.length < 2) continue;
-
-      const positiveValues = route.values.filter(v => v > 0);
-      const routeValue = positiveValues.length
-        ? Math.min(...positiveValues)
-        : 0;
-
-      const animatedPath = L.polyline(coordinates, {
-        weight: weightFor(routeValue, max),
-        color: CONFIG.colors.flow,
-        opacity: 0.95,
-        lineCap: 'round',
-        lineJoin: 'round',
-        interactive: false,
-        bubblingMouseEvents: true,
-        className: `flow-dash ${speedClass}`
-      });
-
-      animatedPath.addTo(flowLayer);
-    }
+    path.addTo(flowLayer);
   }
 
   state.flowsVisible = true;
