@@ -529,7 +529,7 @@ function renderYear(year, animate = state.playing) {
     const path = L.polyline(coordinates, {
       weight: weightFor(route.value, max),
       color: CONFIG.colors.flow,
-      opacity: 0.9,
+      opacity: 0.6,
       lineCap: 'round',
       lineJoin: 'round',
       interactive: true,
@@ -545,8 +545,8 @@ function renderYear(year, animate = state.playing) {
       );
     }
 
-    path.on('mouseover', () => path.setStyle({opacity: 1}));
-    path.on('mouseout', () => path.setStyle({opacity: 0.9}));
+    path.on('mouseover', () => path.setStyle({opacity: 0.9}));
+    path.on('mouseout', () => path.setStyle({opacity: 0.6}));
 
     path.addTo(flowLayer);
   }
