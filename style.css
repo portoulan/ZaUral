@@ -12,9 +12,7 @@ html, body, #app, #map { width: 100%; height: 100%; margin: 0; }
   z-index: 1000;
   left: 18px;
   top: 18px;
-  width: min(430px, calc(100vw - 36px));
-  max-height: calc(100vh - 36px);
-  overflow: auto;
+  width: min(473px, calc(100vw - 36px));
   background: rgba(255,255,255,.96);
   border: 1px solid rgba(0,0,0,.08);
   border-radius: 14px;
@@ -58,7 +56,7 @@ th { position:sticky; top:0; background:#f7f8f9; z-index:1; }
 
 .leaflet-control-attribution { font-size:10px; }
 @media (max-width: 600px) {
-  .panel { left:8px; top:8px; width:calc(100vw - 16px); max-height:52vh; }
+  .panel { left:8px; top:8px; width:calc(100vw - 16px); }
 }
 
 .region-popup { font-size: 14px; line-height: 1.45; font-weight: 600; min-width: 120px; }
@@ -69,7 +67,7 @@ th { position:sticky; top:0; background:#f7f8f9; z-index:1; }
 .actions button, .table-tabs button, .chart-tabs button { flex:1; }
 .tables-panel, .charts-panel { margin-top:8px; }
 .section-title { font-weight:700; margin:8px 0; }
-.chart-wrap { height:240px; position:relative; }
+.chart-wrap { height:280px; position:relative; }
 .region-popup { font-weight:600; }
 
 .total-row td { font-weight: 700; border-top: 2px solid #333; }
@@ -165,3 +163,43 @@ th { position:sticky; top:0; background:#f7f8f9; z-index:1; }
 .chart-wrap .chartLegend{order:3;width:100%;margin-top:10px;}
 
 .chart-wrap .legend{order:3;width:100%;margin-top:10px;}
+
+/* Заголовок панели: флаги слева/справа от названия */
+.panel-heading-row { display:flex; align-items:center; gap:8px; }
+.panel-heading-row h1 { margin:0; }
+.flag {
+  display:inline-block; flex:none;
+  width:24px; height:16px;
+  border:1px solid rgba(0,0,0,.18); border-radius:2px;
+}
+/* Флаг России: бело-сине-красный */
+.flag-ru {
+  background: linear-gradient(to bottom,
+    #ffffff 0 33.34%,
+    #0039a6 33.34% 66.67%,
+    #d52b1e 66.67% 100%);
+}
+/* Флаг Российской империи: чёрно-жёлто-белый */
+.flag-empire {
+  background: linear-gradient(to bottom,
+    #000000 0 33.34%,
+    #ffd700 33.34% 66.67%,
+    #ffffff 66.67% 100%);
+}
+
+/* Подпись автора справа внизу */
+.author-badge {
+  position: absolute;
+  z-index: 1000;
+  right: 14px;
+  bottom: 14px;
+  padding: 6px 11px;
+  background: rgba(255,255,255,.94);
+  border: 1px solid rgba(0,0,0,.12);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #26313b;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,.14);
+}
+.author-badge:hover { text-decoration: underline; }
