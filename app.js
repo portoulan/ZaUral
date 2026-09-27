@@ -2,7 +2,7 @@
 const CONFIG = {
   years: Array.from({length: 21}, (_, i) => 1896 + i),
   colors: {
-    flow: '#0000ff',
+    flow: '#d85b36',
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
   }
@@ -148,7 +148,7 @@ const flowLayer = L.layerGroup().addTo(map);
   style.id = 'flow-dash-styles';
   style.textContent = `
     .flow-dash {
-      stroke-dasharray: 5 45;
+      stroke-dasharray: 10 14;
       animation-name: flowDash;
       animation-timing-function: linear;
       animation-iteration-count: infinite;
@@ -157,7 +157,7 @@ const flowLayer = L.layerGroup().addTo(map);
     .flow-dash-speed-1 { animation-duration: 1.1s; }
     .flow-dash-speed-2 { animation-duration: 0.55s; }
     @keyframes flowDash {
-      to { stroke-dashoffset: -50; }
+      to { stroke-dashoffset: -24; }
     }
   `;
   document.head.appendChild(style);
@@ -493,6 +493,58 @@ function namesForRoute(nodes) {
   return [...names];
 }
 
+// Явно заданные сквозные маршруты: пунктир по ним должен идти одной
+// непрерывной линией из первого узла в последний, независимо от того,
+// как автоматический алгоритм (buildContinuousRoutes) разбил бы граф
+// на цепочки. Остальная сеть строится как обычно, но уже без рёбер,
+// «съеденных» этими маршрутами — поэтому прочие потоки естественным
+// образом начинаются/заканчиваются в точках входа-выхода из них.
+const FORCED_ROUTES = [
+  'N303;N501;N502;N503;N504;N505;N506;N507;N332;N488;N489;N490;N491;N316;N348;N493;N494;N495;N320;N496;N497;N498;N309;N499;N500;N442;N342;N453;N454;N455;N456;N457;N458;N459;N460;N461;N452;N1;N2;N3;N4;N5;N6;N7;N8;N9;N10;N11;N12;N13;N14;N15;N16;N17;N18;N19;N20;N21;N22;N23;N24;N25;N26;N27;N28;N29;N30;N31;N32;N33;N34;N35;N36;N37;N38;N39;N40;N41;N42;N43;N44;N45;N46;N47;N48;N49;N50;N51;N52;N53;N54;N55;N56;N57;N58;N59;N60;N61;N62;N63;N64;N65;N66;N67;N68;N69;N70;N71;N72;N73;N74;N75;N76;N77;N78;N79;N80;N81;N82;N83;N84;N85;N86;N87;N88;N89;N90;N91;N92;N93;N94;N95;N96;N97;N98;N99;N100;N101;N102;N103;N104;N105;N106;N107;N108;N109;N110;N111;N112;N113;N114;N115;N116;N117;N118;N119;N120;N226',
+  'N189;N192;N193;N194;N195;N196;N197;N198;N199;N200;N201;N202;N203;N204;N205;N206;N207;N208;N209;N210;N211;N212;N213;N214;N215;N216;N217;N218;N219;N220;N221;N222;N223;N224;N225;N226'
+].map(line => line.split(';').map(s => s.trim()).filter(Boolean));
+
+// Строит маршруты по заданным вручную цепочкам узлов и удаляет их рёбра
+// из flow (мутирует переданную Map), чтобы остальной граф достраивался
+// вокруг них. Разрывает цепочку там, где нужного ребра нет в flow или
+// его значение не положительное — так каждый непрерывный «живой» участок
+// заданного маршрута всё равно рисуется одной линией.
+function extractForcedRoutes(flow) {
+  const routes = [];
+
+  for (const nodeSeq of FORCED_ROUTES) {
+    let nodes = [];
+    let values = [];
+
+    const flush = () => {
+      if (nodes.length >= 2) routes.push({nodes, values});
+      nodes = [];
+      values = [];
+    };
+
+    for (let i = 0; i < nodeSeq.length - 1; i++) {
+      const a = nodeSeq[i];
+      const b = nodeSeq[i + 1];
+      const key = `${a}>${b}`;
+      const value = flow.get(key);
+
+      if (!value || value <= 0) {
+        flush();
+        continue;
+      }
+
+      if (!nodes.length) nodes.push(a);
+      nodes.push(b);
+      values.push(value);
+      flow.delete(key);
+    }
+
+    flush();
+  }
+
+  return routes;
+}
+
 function renderYear(year, animate = state.playing) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
@@ -517,7 +569,10 @@ function renderYear(year, animate = state.playing) {
   // Вся сеть рисуется по непрерывным цепочкам узлов (от истока/точки
   // слияния до конечной точки), а не по отдельным рёбрам — так CSS-пунктир
   // бежит одним движением через весь поток, не сбрасываясь на стыках.
-  const routes = buildContinuousRoutes(flow);
+  // Сначала выделяем заданные вручную сквозные маршруты (и убираем их
+  // рёбра из flow), а остальную сеть достраиваем автоматически вокруг них.
+  const forcedRoutes = extractForcedRoutes(flow);
+  const routes = forcedRoutes.concat(buildContinuousRoutes(flow));
 
   for (const route of routes) {
     if (!route.nodes || route.nodes.length < 2) continue;
