@@ -386,6 +386,104 @@ function weightFor(value,max,year=state.currentYear){
 }
 
 
+// Строит непрерывные цепочки узлов между «развилками» — точками слияния
+// или разделения потока (а не между соседними узлами). Узел считается
+// развилкой, если у него не ровно один вход и не ровно один выход
+// (исток, сток, слияние или разделение). Внутри цепочки (там, где у
+// каждого узла ровно один вход и один выход) толщина не меняется —
+// меняться она может только на самой развилке:
+//  - при слиянии (несколько входов сводятся в одно продолжение) —
+//    толщина новой цепочки берётся как сумма величин слившихся потоков;
+//  - при разделении (несколько исходящих рёбер) — у каждой новой
+//    цепочки своя толщина, по величине именно этого ответвления.
+function buildJunctionRoutes(flow) {
+  const outEdges = new Map();
+  const inValues = new Map();
+
+  for (const [key, value] of flow) {
+    if (!value || value <= 0) continue;
+    const split = key.indexOf('>');
+    if (split < 0) continue;
+    const a = key.slice(0, split);
+    const b = key.slice(split + 1);
+
+    if (!outEdges.has(a)) outEdges.set(a, []);
+    outEdges.get(a).push({to: b, value});
+
+    if (!inValues.has(b)) inValues.set(b, []);
+    inValues.get(b).push(value);
+  }
+
+  const outDegree = node => (outEdges.get(node) || []).length;
+  const inDegree = node => (inValues.get(node) || []).length;
+  const inSum = node =>
+    (inValues.get(node) || []).reduce((sum, v) => sum + v, 0);
+  const isJunction = node => inDegree(node) !== 1 || outDegree(node) !== 1;
+
+  const junctions = new Set();
+  for (const node of new Set([...outEdges.keys(), ...inValues.keys()])) {
+    if (isJunction(node)) junctions.add(node);
+  }
+
+  const routes = [];
+  const usedEdges = new Set();
+
+  for (const start of junctions) {
+    for (const edge of outEdges.get(start) || []) {
+      const edgeKey = `${start}>${edge.to}`;
+      if (usedEdges.has(edgeKey)) continue;
+
+      // Толщина всей цепочки до следующей развилки.
+      const chainValue = (outDegree(start) === 1 && inDegree(start) >= 2)
+        ? inSum(start)   // слияние: сумма величин слившихся потоков
+        : edge.value;    // исток/разделение: собственная величина ветви
+
+      const nodes = [start, edge.to];
+      usedEdges.add(edgeKey);
+
+      let current = edge.to;
+      const guard = new Set([edgeKey]);
+
+      while (!isJunction(current)) {
+        const nextEdges = outEdges.get(current) || [];
+        if (!nextEdges.length) break;
+
+        const nextEdge = nextEdges[0];
+        const nextKey = `${current}>${nextEdge.to}`;
+
+        if (guard.has(nextKey)) break; // защита от зацикливания
+        guard.add(nextKey);
+        usedEdges.add(nextKey);
+
+        nodes.push(nextEdge.to);
+        current = nextEdge.to;
+      }
+
+      routes.push({nodes, value: chainValue});
+    }
+  }
+
+  return routes;
+}
+
+function namesForNodes(nodes) {
+  const names = new Set();
+
+  for (const node of nodes) {
+    const set = state.regionByNode.get(node);
+    if (!set) continue;
+
+    for (const raw of set) {
+      const key = String(raw).trim();
+      if (key && key !== 'ВСЕГО') {
+        names.add(DISPLAY_NAME[key] || key);
+      }
+    }
+  }
+
+  return [...names];
+}
+
 function renderYear(year, animate = state.playing) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
@@ -408,43 +506,41 @@ function renderYear(year, animate = state.playing) {
   const speedClass = `flow-dash-speed-${state.speedIndex}`;
   const dashClass = animate ? `flow-dash ${speedClass}` : '';
 
-  // Каждое ребро — отдельная линия со своей толщиной по своему значению
-  // потока (объединять рёбра в одну полилинию нельзя: у SVG-линии только
-  // одна толщина на всю длину, а толщина должна меняться по величине
-  // потока). У каждой линии свой flow-dash — анимация идёт по каждому
-  // ребру, поток естественно начинается/заканчивается там, где он
-  // выходит из другого потока или вливается в него.
-  for (const [key, value] of flow) {
-    if (value <= 0) continue;
+  // Каждая цепочка — от развилки (слияния/разделения/истока) до следующей
+  // развилки — рисуется одной линией с единой толщиной, а пунктир бежит
+  // по ней непрерывно. Толщина меняется именно на развилках: при слиянии
+  // становится больше (сумма слившихся потоков), при разделении — своя
+  // у каждого нового ответвления.
+  const routes = buildJunctionRoutes(flow);
 
-    const split = key.indexOf('>');
-    if (split < 0) continue;
+  for (const route of routes) {
+    if (!route.nodes || route.nodes.length < 2) continue;
 
-    const a = key.slice(0, split);
-    const b = key.slice(split + 1);
+    const coordinates = [];
 
-    const A = state.nodes.get(a);
-    const B = state.nodes.get(b);
-    if (!A || !B) continue;
+    for (const nodeId of route.nodes) {
+      const node = state.nodes.get(nodeId);
+      if (!node) continue;
+      coordinates.push([node.lat, node.lon]);
+    }
 
-    const path = L.polyline(
-      [[A.lat, A.lon], [B.lat, B.lon]],
-      {
-        weight: weightFor(value, max),
-        color: CONFIG.colors.flow,
-        opacity: 0.9,
-        lineCap: 'round',
-        lineJoin: 'round',
-        interactive: true,
-        className: dashClass
-      }
-    );
+    if (coordinates.length < 2) continue;
 
-    const segmentNames = namesForSegment(a, b);
+    const path = L.polyline(coordinates, {
+      weight: weightFor(route.value, max),
+      color: CONFIG.colors.flow,
+      opacity: 0.9,
+      lineCap: 'round',
+      lineJoin: 'round',
+      interactive: true,
+      className: dashClass
+    });
 
-    if (segmentNames.length) {
+    const names = namesForNodes(route.nodes);
+
+    if (names.length) {
       path.bindPopup(
-        `<div class="region-popup">${segmentNames.map(escapeHtml).join('<br>')}</div>`,
+        `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
         {closeButton: true}
       );
     }
