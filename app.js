@@ -566,55 +566,90 @@ function renderYear(year, animate = state.playing) {
   const max = Math.max(...values, 1);
   const speedClass = `flow-dash-speed-${state.speedIndex}`;
 
-  // Вся сеть рисуется по непрерывным цепочкам узлов (от истока/точки
-  // слияния до конечной точки), а не по отдельным рёбрам — так CSS-пунктир
-  // бежит одним движением через весь поток, не сбрасываясь на стыках.
-  // Сначала выделяем заданные вручную сквозные маршруты (и убираем их
-  // рёбра из flow), а остальную сеть достраиваем автоматически вокруг них.
-  const forcedRoutes = extractForcedRoutes(flow);
-  const routes = forcedRoutes.concat(buildContinuousRoutes(flow));
+  // Базовый слой: КАЖДОЕ ребро рисуется отдельной линией со своей
+  // собственной толщиной по значению потока — это сохраняет исходную
+  // толщину сети (как до объединения рёбер в цепочки).
+  for (const [key, value] of flow) {
+    if (value <= 0) continue;
 
-  for (const route of routes) {
-    if (!route.nodes || route.nodes.length < 2) continue;
+    const split = key.indexOf('>');
+    if (split < 0) continue;
 
-    const coordinates = [];
+    const a = key.slice(0, split);
+    const b = key.slice(split + 1);
 
-    for (const nodeId of route.nodes) {
-      const node = state.nodes.get(nodeId);
-      if (!node) continue;
-      coordinates.push([node.lat, node.lon]);
-    }
+    const A = state.nodes.get(a);
+    const B = state.nodes.get(b);
+    if (!A || !B) continue;
 
-    if (coordinates.length < 2) continue;
+    const basePath = L.polyline(
+      [[A.lat, A.lon], [B.lat, B.lon]],
+      {
+        weight: weightFor(value, max),
+        color: CONFIG.colors.flow,
+        opacity: 0.85,
+        lineCap: 'round',
+        lineJoin: 'round',
+        interactive: true
+      }
+    );
 
-    const positiveValues = route.values.filter(v => v > 0);
-    const routeValue = positiveValues.length
-      ? Math.min(...positiveValues)
-      : 0;
+    const segmentNames = namesForSegment(a, b);
 
-    const path = L.polyline(coordinates, {
-      weight: weightFor(routeValue, max),
-      color: CONFIG.colors.flow,
-      opacity: 0.9,
-      lineCap: 'round',
-      lineJoin: 'round',
-      interactive: true,
-      className: animate ? `flow-dash ${speedClass}` : ''
-    });
-
-    const names = namesForRoute(route.nodes);
-
-    if (names.length) {
-      path.bindPopup(
-        `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
+    if (segmentNames.length) {
+      basePath.bindPopup(
+        `<div class="region-popup">${segmentNames.map(escapeHtml).join('<br>')}</div>`,
         {closeButton: true}
       );
     }
 
-    path.on('mouseover', () => path.setStyle({opacity: 1}));
-    path.on('mouseout', () => path.setStyle({opacity: 0.9}));
+    basePath.on('mouseover', () => basePath.setStyle({opacity: 1}));
+    basePath.on('mouseout', () => basePath.setStyle({opacity: 0.85}));
 
-    path.addTo(flowLayer);
+    basePath.addTo(flowLayer);
+  }
+
+  // Анимационный слой поверх: непрерывные цепочки узлов (от истока/точки
+  // слияния до конечной точки), по которым бежит CSS-пунктир одним
+  // движением через весь поток. На толщину сети не влияет — это лишь
+  // движущийся акцент поверх базового слоя, поэтому он не интерактивен
+  // и не перехватывает наведение/клик у базовых линий.
+  if (animate) {
+    const routeFlow = new Map(flow);
+    const forcedRoutes = extractForcedRoutes(routeFlow);
+    const routes = forcedRoutes.concat(buildContinuousRoutes(routeFlow));
+
+    for (const route of routes) {
+      if (!route.nodes || route.nodes.length < 2) continue;
+
+      const coordinates = [];
+
+      for (const nodeId of route.nodes) {
+        const node = state.nodes.get(nodeId);
+        if (!node) continue;
+        coordinates.push([node.lat, node.lon]);
+      }
+
+      if (coordinates.length < 2) continue;
+
+      const positiveValues = route.values.filter(v => v > 0);
+      const routeValue = positiveValues.length
+        ? Math.min(...positiveValues)
+        : 0;
+
+      const animatedPath = L.polyline(coordinates, {
+        weight: weightFor(routeValue, max),
+        color: CONFIG.colors.flow,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round',
+        interactive: false,
+        bubblingMouseEvents: true,
+        className: `flow-dash ${speedClass}`
+      });
+
+      animatedPath.addTo(flowLayer);
+    }
   }
 
   state.flowsVisible = true;
