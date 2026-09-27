@@ -1,8 +1,6 @@
 /* Interactive migration map — GitHub Pages */
 const CONFIG = {
   years: Array.from({length: 21}, (_, i) => 1896 + i),
-  animationInterval: [1600, 900, 450],
-  antDelay: [700, 350, 140],
   colors: {
     flow: '#d85b36',
     boundary: '#7d8790',
@@ -138,6 +136,32 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const flowLayer = L.layerGroup().addTo(map);
+
+// Внедряем CSS-анимацию «бегущего пунктира» (в духе демо
+// Leaflet.Path.DashFlow: https://ivansanchez.gitlab.io/Leaflet.Path.DashFlow/demo.html).
+// Это чистый CSS (stroke-dashoffset + @keyframes) без JS-цикла на каждый
+// кадр, поэтому при зуме/панораме ничего не приходится ставить на паузу —
+// анимация просто продолжает идти независимо от перерисовки геометрии.
+(function injectFlowDashStyles() {
+  if (document.getElementById('flow-dash-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'flow-dash-styles';
+  style.textContent = `
+    .flow-dash {
+      stroke-dasharray: 10 14;
+      animation-name: flowDash;
+      animation-timing-function: linear;
+      animation-iteration-count: infinite;
+    }
+    .flow-dash-speed-0 { animation-duration: 2.2s; }
+    .flow-dash-speed-1 { animation-duration: 1.1s; }
+    .flow-dash-speed-2 { animation-duration: 0.55s; }
+    @keyframes flowDash {
+      to { stroke-dashoffset: -24; }
+    }
+  `;
+  document.head.appendChild(style);
+})();
 
 const baseLayer = L.geoJSON(null, {
   style: {
@@ -362,161 +386,80 @@ function weightFor(value,max,year=state.currentYear){
 }
 
 
+// Склеивает отдельные рёбра a>b в непрерывные цепочки узлов — от истока
+// (или точки слияния нескольких потоков) до конечной точки маршрута.
+// Это нужно, чтобы CSS-анимация пунктира шла одним непрерывным движением
+// по всей длине потока, а не обрывалась и не начиналась заново на каждом
+// отдельном ребре.
 function buildContinuousRoutes(flow) {
   const positiveEdges = new Map();
   const incoming = new Map();
 
   for (const [key, value] of flow) {
     if (!value || value <= 0) continue;
-
     const split = key.indexOf('>');
     if (split < 0) continue;
-
     const a = key.slice(0, split);
     const b = key.slice(split + 1);
 
     if (!positiveEdges.has(a)) positiveEdges.set(a, []);
-    positiveEdges.get(a).push({ node: b, value });
+    positiveEdges.get(a).push({node: b, value});
 
     if (!incoming.has(b)) incoming.set(b, []);
     incoming.get(b).push(a);
   }
 
+  const starts = new Set();
+
+  for (const [a] of positiveEdges) {
+    if (!incoming.has(a) || incoming.get(a).length === 0) starts.add(a);
+  }
+
+  for (const row of state.fromRows) {
+    const node = String(row.EDGE || '').trim();
+    if (node && positiveEdges.has(node)) starts.add(node);
+  }
+
   const routes = [];
-  const usedEdges = new Set();
 
-  // These two historical routes are intentionally continuous even though
-  // there are merges/splits inside them.
-  const FORCED_ROUTES = [
-    [
-      'N303','N501','N502','N503','N504','N505','N506','N507','N332',
-      'N488','N489','N490','N491','N316','N348','N493','N494','N495',
-      'N320','N496','N497','N498','N309','N499','N500','N442','N342',
-      'N453','N454','N455','N456','N457','N458','N459','N460','N461',
-      'N452','N1','N2','N3','N4','N5','N6','N7','N8','N9','N10',
-      'N11','N12','N13','N14','N15','N16','N17','N18','N19','N20',
-      'N21','N22','N23','N24','N25','N26','N27','N28','N29','N30',
-      'N31','N32','N33','N34','N35','N36','N37','N38','N39','N40',
-      'N41','N42','N43','N44','N45','N46','N47','N48','N49','N50',
-      'N51','N52','N53','N54','N55','N56','N57','N58','N59','N60',
-      'N61','N62','N63','N64','N65','N66','N67','N68','N69','N70',
-      'N71','N72','N73','N74','N75','N76','N77','N78','N79','N80',
-      'N81','N82','N83','N84','N85','N86','N87','N88','N89','N90',
-      'N91','N92','N93','N94','N95','N96','N97','N98','N99','N100',
-      'N101','N102','N103','N104','N105','N106','N107','N108','N109',
-      'N110','N111','N112','N113','N114','N115','N116','N117','N118',
-      'N119','N120','N121','N122','N123','N124','N125','N126','N127',
-      'N128','N129','N130','N131','N132','N133','N134','N135','N136',
-      'N137','N138','N139','N140','N141','N142','N143','N144','N145',
-      'N146','N147','N148','N149','N150','N151','N152','N153','N154',
-      'N155','N156','N157','N158','N159','N160','N161','N162','N163',
-      'N164','N165','N166','N167','N168','N169','N170','N171','N172',
-      'N173','N174','N175','N176','N177','N178','N179','N180','N181',
-      'N182','N183','N184','N185','N186','N187','N188','N189','N190',
-      'N191','N192','N193','N194','N195','N196','N197','N198','N199',
-      'N200','N201','N202','N203','N204','N205','N206','N207','N208',
-      'N209','N210','N211','N212','N213','N214','N215','N216','N217',
-      'N218','N219','N220','N221','N222','N223','N224','N225','N226'
-    ],
-    [
-      'N189','N192','N193','N194','N195','N196','N197','N198','N199',
-      'N200','N201','N202','N203','N204','N205','N206','N207','N208',
-      'N209','N210','N211','N212','N213','N214','N215','N216','N217',
-      'N218','N219','N220','N221','N222','N223','N224','N225','N226'
-    ]
-  ];
+  function walk(node, nodes, values, visited) {
+    const next = positiveEdges.get(node) || [];
 
-  function edgeValue(a, b) {
-    const edge = positiveEdges.get(a)?.find(e => e.node === b);
-    return edge ? edge.value : 0;
-  }
-
-  // Add a forced route only when every edge of that route exists and is
-  // non-zero for the selected year. Otherwise the normal graph logic below
-  // handles the available parts without inventing a flow.
-  for (const forced of FORCED_ROUTES) {
-    let valid = forced.length >= 2;
-
-    for (let i = 0; valid && i < forced.length - 1; i++) {
-      if (!edgeValue(forced[i], forced[i + 1])) valid = false;
+    if (!next.length) {
+      routes.push({nodes: [...nodes], values: [...values]});
+      return;
     }
 
-    if (!valid) continue;
-
-    const values = [];
-    for (let i = 0; i < forced.length - 1; i++) {
-      const key = `${forced[i]}>${forced[i + 1]}`;
-      usedEdges.add(key);
-      values.push(edgeValue(forced[i], forced[i + 1]));
-    }
-
-    routes.push({ nodes: forced.slice(), values });
-  }
-
-  // For every other flow, a dash path starts exactly at a source, sink,
-  // merge, or split. Ordinary nodes with one incoming and one outgoing edge
-  // stay inside one continuous dash path.
-  const nodes = new Set([
-    ...positiveEdges.keys(),
-    ...incoming.keys()
-  ]);
-
-  const isJunction = node => {
-    const ins = incoming.get(node)?.length || 0;
-    const outs = positiveEdges.get(node)?.length || 0;
-    return ins !== 1 || outs !== 1;
-  };
-
-  function walk(a, b, value, visited) {
-    const nodesOut = [a, b];
-    const valuesOut = [value];
-
-    let current = b;
-
-    while (!isJunction(current)) {
-      const next = positiveEdges.get(current) || [];
-      if (next.length !== 1) break;
-
-      const e = next[0];
-      const key = `${current}>${e.node}`;
-      if (usedEdges.has(key) || visited.has(key)) break;
-
-      visited.add(key);
-      nodesOut.push(e.node);
-      valuesOut.push(e.value);
-      current = e.node;
-    }
-
-    return { nodes: nodesOut, values: valuesOut };
-  }
-
-  // First pass: start at every junction/source/end node.
-  for (const a of nodes) {
-    const outgoing = positiveEdges.get(a) || [];
-    if (!outgoing.length) continue;
-
-    const startHere = isJunction(a) || state.fromRows.some(
-      r => String(r.EDGE || '').trim() === a
-    );
-
-    if (!startHere) continue;
-
-    for (const e of outgoing) {
-      const key = `${a}>${e.node}`;
-      if (usedEdges.has(key)) continue;
-
-      const visited = new Set([key]);
-      const route = walk(a, e.node, e.value, visited);
-
-      for (let i = 0; i < route.nodes.length - 1; i++) {
-        usedEdges.add(`${route.nodes[i]}>${route.nodes[i + 1]}`);
+    for (const edge of next) {
+      if (visited.has(edge.node)) {
+        routes.push({nodes: [...nodes], values: [...values]});
+        continue;
       }
 
-      if (route.nodes.length >= 2) routes.push(route);
+      const nextVisited = new Set(visited);
+      nextVisited.add(edge.node);
+
+      walk(
+        edge.node,
+        [...nodes, edge.node],
+        [...values, edge.value],
+        nextVisited
+      );
     }
   }
 
-  // Safety pass: no positive edge may remain without an animated path.
+  for (const start of starts) {
+    walk(start, [start], [], new Set([start]));
+  }
+
+  const usedEdges = new Set();
+
+  for (const route of routes) {
+    for (let i = 0; i < route.nodes.length - 1; i++) {
+      usedEdges.add(`${route.nodes[i]}>${route.nodes[i + 1]}`);
+    }
+  }
+
   for (const [key, value] of flow) {
     if (!value || value <= 0 || usedEdges.has(key)) continue;
 
@@ -550,78 +493,59 @@ function namesForRoute(nodes) {
   return [...names];
 }
 
+// Явно заданные сквозные маршруты: пунктир по ним должен идти одной
+// непрерывной линией из первого узла в последний, независимо от того,
+// как автоматический алгоритм (buildContinuousRoutes) разбил бы граф
+// на цепочки. Остальная сеть строится как обычно, но уже без рёбер,
+// «съеденных» этими маршрутами — поэтому прочие потоки естественным
+// образом начинаются/заканчиваются в точках входа-выхода из них.
+const FORCED_ROUTES = [
+  'N303;N501;N502;N503;N504;N505;N506;N507;N332;N488;N489;N490;N491;N316;N348;N493;N494;N495;N320;N496;N497;N498;N309;N499;N500;N442;N342;N453;N454;N455;N456;N457;N458;N459;N460;N461;N452;N1;N2;N3;N4;N5;N6;N7;N8;N9;N10;N11;N12;N13;N14;N15;N16;N17;N18;N19;N20;N21;N22;N23;N24;N25;N26;N27;N28;N29;N30;N31;N32;N33;N34;N35;N36;N37;N38;N39;N40;N41;N42;N43;N44;N45;N46;N47;N48;N49;N50;N51;N52;N53;N54;N55;N56;N57;N58;N59;N60;N61;N62;N63;N64;N65;N66;N67;N68;N69;N70;N71;N72;N73;N74;N75;N76;N77;N78;N79;N80;N81;N82;N83;N84;N85;N86;N87;N88;N89;N90;N91;N92;N93;N94;N95;N96;N97;N98;N99;N100;N101;N102;N103;N104;N105;N106;N107;N108;N109;N110;N111;N112;N113;N114;N115;N116;N117;N118;N119;N120;N226',
+  'N189;N192;N193;N194;N195;N196;N197;N198;N199;N200;N201;N202;N203;N204;N205;N206;N207;N208;N209;N210;N211;N212;N213;N214;N215;N216;N217;N218;N219;N220;N221;N222;N223;N224;N225;N226'
+].map(line => line.split(';').map(s => s.trim()).filter(Boolean));
 
-/*
- * DashFlow-style animation.
- *
- * This follows the idea of Leaflet.Path.DashFlow:
- * dashOffset is advanced in pixels per second and the Leaflet path is
- * redrawn. Unlike Ant Path, the whole route is one ordinary polyline.
- */
-const DASHFLOW_SPEEDS = [28, 56, 112];
-const dashFlowRegistry = new Set();
+// Строит маршруты по заданным вручную цепочкам узлов и удаляет их рёбра
+// из flow (мутирует переданную Map), чтобы остальной граф достраивался
+// вокруг них. Разрывает цепочку там, где нужного ребра нет в flow или
+// его значение не положительное — так каждый непрерывный «живой» участок
+// заданного маршрута всё равно рисуется одной линией.
+function extractForcedRoutes(flow) {
+  const routes = [];
 
-function createDashFlowPath(latlngs, options) {
-  const path = L.polyline(latlngs, {
-    ...options,
-    dashArray: options.dashArray || '10 18',
-    dashOffset: '0',
-    renderer: map.getRenderer ? map.getRenderer(L.latLng(latlngs[0])) : undefined
-  });
+  for (const nodeSeq of FORCED_ROUTES) {
+    let nodes = [];
+    let values = [];
 
-  let running = false;
-  let raf = null;
-  let last = 0;
-  let offset = 0;
+    const flush = () => {
+      if (nodes.length >= 2) routes.push({nodes, values});
+      nodes = [];
+      values = [];
+    };
 
-  function frame(now) {
-    if (!running) {
-      raf = null;
-      return;
+    for (let i = 0; i < nodeSeq.length - 1; i++) {
+      const a = nodeSeq[i];
+      const b = nodeSeq[i + 1];
+      const key = `${a}>${b}`;
+      const value = flow.get(key);
+
+      if (!value || value <= 0) {
+        flush();
+        continue;
+      }
+
+      if (!nodes.length) nodes.push(a);
+      nodes.push(b);
+      values.push(value);
+      flow.delete(key);
     }
 
-    if (!last) last = now;
-    const dt = Math.min(80, now - last);
-    last = now;
-
-    offset += dt * (options.dashSpeed || DASHFLOW_SPEEDS[state.speedIndex]) / 1000;
-    path.setStyle({ dashOffset: String(-offset) });
-
-    raf = requestAnimationFrame(frame);
+    flush();
   }
 
-  path.startDashFlow = () => {
-    if (running) return;
-    running = true;
-    last = performance.now();
-    if (!raf) raf = requestAnimationFrame(frame);
-  };
-
-  path.pauseDashFlow = () => {
-    running = false;
-    last = 0;
-    if (raf) {
-      cancelAnimationFrame(raf);
-      raf = null;
-    }
-  };
-
-  path.resume = path.startDashFlow;
-  path.pause = path.pauseDashFlow;
-
-  path.on('remove', () => {
-    path.pauseDashFlow();
-    dashFlowRegistry.delete(path);
-  });
-
-  dashFlowRegistry.add(path);
-
-  if (state.playing) path.startDashFlow();
-
-  return path;
+  return routes;
 }
 
-function renderYear(year) {
+function renderYear(year, animate = state.playing) {
   state.currentYear = Number(year);
   document.getElementById('yearLabel').textContent = year;
 
@@ -640,10 +564,64 @@ function renderYear(year) {
   const { flow } = calculateFlows(state.currentYear);
   const values = [...flow.values()].filter(v => v > 0);
   const max = Math.max(...values, 1);
+  const speedClass = `flow-dash-speed-${state.speedIndex}`;
+  const dashClass = animate ? `flow-dash ${speedClass}` : '';
 
-  // Основная сеть: отдельные участки сохраняются,
-  // поэтому сохраняется индивидуальная толщина каждого ребра.
-  for (const [key, value] of flow) {
+  // Сначала вынимаем из графа два заданных сквозных маршрута — их рёбра
+  // рисуются ОДНОЙ линией, чтобы пунктир шёл по ним непрерывно, без
+  // разрывов на стыках узлов.
+  const routeFlow = new Map(flow);
+  const forcedRoutes = extractForcedRoutes(routeFlow);
+
+  for (const route of forcedRoutes) {
+    if (!route.nodes || route.nodes.length < 2) continue;
+
+    const coordinates = [];
+
+    for (const nodeId of route.nodes) {
+      const node = state.nodes.get(nodeId);
+      if (!node) continue;
+      coordinates.push([node.lat, node.lon]);
+    }
+
+    if (coordinates.length < 2) continue;
+
+    const positiveValues = route.values.filter(v => v > 0);
+    const routeValue = positiveValues.length
+      ? Math.min(...positiveValues)
+      : 0;
+
+    const path = L.polyline(coordinates, {
+      weight: weightFor(routeValue, max),
+      color: CONFIG.colors.flow,
+      opacity: 0.9,
+      lineCap: 'round',
+      lineJoin: 'round',
+      interactive: true,
+      className: dashClass
+    });
+
+    const names = namesForRoute(route.nodes);
+
+    if (names.length) {
+      path.bindPopup(
+        `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
+        {closeButton: true}
+      );
+    }
+
+    path.on('mouseover', () => path.setStyle({opacity: 1}));
+    path.on('mouseout', () => path.setStyle({opacity: 0.9}));
+
+    path.addTo(flowLayer);
+  }
+
+  // Остальная сеть — по отдельному ребру на линию, со своей толщиной по
+  // значению именно этого ребра. Каждый такой поток естественным образом
+  // начинается там, где выходит из другого потока, и заканчивается там,
+  // где в него входит (рёбра двух маршрутов выше уже удалены из routeFlow,
+  // поэтому здесь ничего не дублируется).
+  for (const [key, value] of routeFlow) {
     if (value <= 0) continue;
 
     const split = key.indexOf('>');
@@ -661,84 +639,45 @@ function renderYear(year) {
       {
         weight: weightFor(value, max),
         color: CONFIG.colors.flow,
-        opacity: 0.86,
+        opacity: 0.9,
         lineCap: 'round',
         lineJoin: 'round',
-        interactive: true
+        interactive: true,
+        className: dashClass
       }
     );
 
-    const names = namesForSegment(a, b);
+    const segmentNames = namesForSegment(a, b);
 
-    if (names.length) {
+    if (segmentNames.length) {
       path.bindPopup(
-        `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
+        `<div class="region-popup">${segmentNames.map(escapeHtml).join('<br>')}</div>`,
         {closeButton: true}
       );
     }
 
     path.on('mouseover', () => path.setStyle({opacity: 1}));
-    path.on('mouseout', () => path.setStyle({opacity: 0.86}));
+    path.on('mouseout', () => path.setStyle({opacity: 0.9}));
 
     path.addTo(flowLayer);
   }
 
-  // Анимация DashFlow: один пунктирный polyline проходит по всей
-  // непрерывной цепочке. На обычной сети новый пунктир начинается
-  // только в источнике, слиянии, разделении или конечном узле.
-  if (state.playing) {
-    const routes = buildContinuousRoutes(flow);
+  state.flowsVisible = true;
+  if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
 
-    for (const route of routes) {
-      if (!route.nodes || route.nodes.length < 2) continue;
+  document.getElementById('status').textContent = '';
 
-      const coordinates = route.nodes
-        .map(nodeId => state.nodes.get(nodeId))
-        .filter(Boolean)
-        .map(node => [node.lat, node.lon]);
+  const tablePanel = document.getElementById('tablePanel');
+  if (tablePanel && !tablePanel.classList.contains('hidden')) {
+    const title = document.getElementById('tableTitle');
+    const kind = title ? title.dataset.kind : '';
+    if (kind) showTable(kind);
+  }
 
-      if (coordinates.length < 2) continue;
-
-      const positiveValues = route.values.filter(v => v > 0);
-      const routeValue = positiveValues.length
-        ? Math.min(...positiveValues)
-        : 0;
-
-      const animatedPath = createDashFlowPath(
-        coordinates,
-        {
-          dashArray: '10 18',
-          dashSpeed: DASHFLOW_SPEEDS[state.speedIndex],
-          weight: weightFor(routeValue, max),
-          color: CONFIG.colors.flow,
-          opacity: 0.86,
-          lineCap: 'round',
-          lineJoin: 'round',
-          interactive: true
-        }
-      );
-
-      const names = namesForRoute(route.nodes);
-
-      if (names.length) {
-        animatedPath.bindPopup(
-          `<div class="region-popup">${names.map(escapeHtml).join('<br>')}</div>`,
-          {closeButton: true}
-        );
-      }
-
-      animatedPath.on('mouseover', () => {
-        animatedPath.setStyle({opacity: 1});
-      });
-
-      animatedPath.on('mouseout', () => {
-        animatedPath.setStyle({opacity: 0.86});
-      });
-
-      animatedPath.addTo(flowLayer);
-
-      if (state.playing) animatedPath.startDashFlow();
-    }
+  const chartsPanel = document.getElementById('chartsPanel');
+  if (chartsPanel && !chartsPanel.classList.contains('hidden')) {
+    showChart(state.chartKind);
+    updateChartTotal();
   }
 
   if (state.mapKind) applyMapTheme(state.mapKind);
@@ -755,7 +694,7 @@ function buildYearButtons() {
       const wasPlaying=state.playing;
       if(wasPlaying) pauseAnimation();
 
-      renderYear(year);
+      renderYear(year, wasPlaying);
 
       if(wasPlaying) startAnimation();
       else {
@@ -772,35 +711,19 @@ function buildYearButtons() {
 
 
 function pauseAnimation() {
-  state.playing = false;
-
-  if (state.timer) clearInterval(state.timer);
-  state.timer = null;
-
-  flowLayer.eachLayer(layer => {
-    if (layer.pauseDashFlow) layer.pauseDashFlow();
-    else if (layer.pause) layer.pause();
-  });
-
-  state.flowsVisible = false;
-
-  if (map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
-
+  state.playing=false;
+  if(state.timer)clearInterval(state.timer);
+  state.timer=null;
+  state.flowsVisible=false;
+  if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);
   updateAnimationButton();
 }
 
 
 function startAnimation() {
-  state.flowsVisible = true;
-  state.playing = true;
-
-  if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
-
-  flowLayer.eachLayer(layer => {
-    if (layer.startDashFlow) layer.startDashFlow();
-    else if (layer.resume) layer.resume();
-  });
-
+  state.flowsVisible=true;
+  if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
+  state.playing=true;
   updateAnimationButton();
 }
 
@@ -837,7 +760,7 @@ function changeYear(delta) {
   // Rebuild the selected year without changing the user's animation preference.
   if(wasPlaying) pauseAnimation();
 
-  renderYear(ys[ni]);
+  renderYear(ys[ni], wasPlaying);
 
   if(wasPlaying) startAnimation();
   else {
@@ -1218,7 +1141,7 @@ document.getElementById('panelToggle').onclick = () => {
 
 document.getElementById('animationBtn').onclick=()=>{
   if(state.playing) pauseAnimation();
-  else { renderYear(state.currentYear); startAnimation(); }
+  else { renderYear(state.currentYear, true); startAnimation(); }
 };
 
 document.getElementById('tablesBtn').onclick = () => {
