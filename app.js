@@ -5,7 +5,14 @@ const CONFIG = {
     flow: '#d85b36',
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
-  }
+  },
+  // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
+  // (кнопка «Скорость»). Чем больше — тем быстрее.
+  arrowSpeed: [70, 150, 320],
+  // Целевое расстояние между соседними штрихами на маршруте, px.
+  arrowSpacing: 34,
+  arrowMinCount: 3,
+  arrowMaxCount: 14
 };
 
 
@@ -137,31 +144,112 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const flowLayer = L.layerGroup().addTo(map);
 
-// Внедряем CSS-анимацию «бегущего пунктира» (в духе демо
-// Leaflet.Path.DashFlow: https://ivansanchez.gitlab.io/Leaflet.Path.DashFlow/demo.html).
-// Это чистый CSS (stroke-dashoffset + @keyframes) без JS-цикла на каждый
-// кадр, поэтому при зуме/панораме ничего не приходится ставить на паузу —
-// анимация просто продолжает идти независимо от перерисовки геометрии.
-(function injectFlowDashStyles() {
-  if (document.getElementById('flow-dash-styles')) return;
+// Анимация потока — маленькие штрихи-«пятиугольники» (левая часть
+// прямоугольная, правая — треугольная, остриём по направлению движения),
+// бегущие вдоль маршрута через CSS Motion Path (offset-path +
+// offset-distance). stroke-dasharray физически не умеет рисовать фигурный
+// штрих (только прямоугольные отрезки), поэтому форма задаётся отдельными
+// SVG-фигурами, которые двигает offset-path; offset-rotate:auto сам
+// поворачивает их по касательной маршрута на каждом изгибе. Это по-прежнему
+// чистый CSS — JS не расходуется на кадр, только на пересчёт offset-path
+// после зума/панорамы (см. layoutFlowArrows).
+(function injectFlowArrowStyles() {
+  if (document.getElementById('flow-arrow-styles')) return;
   const style = document.createElement('style');
-  style.id = 'flow-dash-styles';
+  style.id = 'flow-arrow-styles';
   style.textContent = `
-    .flow-dash {
-      stroke-dasharray: 10 14;
-      animation-name: flowDash;
+    .flow-arrow {
+      animation-name: flowArrowMove;
       animation-timing-function: linear;
       animation-iteration-count: infinite;
+      offset-rotate: auto;
+      offset-anchor: 9px 5px;
+      pointer-events: none;
     }
-    .flow-dash-speed-0 { animation-duration: 2.2s; }
-    .flow-dash-speed-1 { animation-duration: 1.1s; }
-    .flow-dash-speed-2 { animation-duration: 0.55s; }
-    @keyframes flowDash {
-      to { stroke-dashoffset: -24; }
+    @keyframes flowArrowMove {
+      from { offset-distance: 0%; }
+      to   { offset-distance: 100%; }
     }
   `;
   document.head.appendChild(style);
 })();
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// Вытянутый пятиугольник: левая часть — прямоугольная (ровный срез),
+// правая — треугольная (остриё). offset-rotate:auto довернёт фигуру по
+// направлению движения, поэтому форма задана «остриём вправо».
+const FLOW_ARROW_POINTS = '0,0 10,0 18,5 10,10 0,10';
+
+// Активные штрихи текущего года: {latlngs, elements[]} — нужно, чтобы
+// пересчитать offset-path при зуме/панораме и убрать их при паузе или
+// перерисовке (это «сырые» SVG-элементы рядом с линиями, не объекты
+// Leaflet, поэтому flowLayer.clearLayers() их не затрагивает).
+let activeFlowArrows = [];
+
+function clearFlowArrows() {
+  for (const entry of activeFlowArrows) {
+    for (const el of entry.elements) el.remove();
+  }
+  activeFlowArrows = [];
+}
+
+function routePixelPath(latlngs) {
+  const points = latlngs.map(ll => map.latLngToLayerPoint(ll));
+  let d = `M${points[0].x},${points[0].y}`;
+  let length = 0;
+
+  for (let i = 1; i < points.length; i++) {
+    d += ` L${points[i].x},${points[i].y}`;
+    length += points[i - 1].distanceTo(points[i]);
+  }
+
+  return {d, length};
+}
+
+// Создаёт штрихи для одного маршрута и вешает на них CSS-анимацию
+// движения вдоль offset-path. Количество и длительность подобраны так,
+// чтобы расстояние между штрихами и их скорость (px/сек экрана) были
+// примерно одинаковыми у всех маршрутов, независимо от длины.
+function addFlowArrows(latlngs, container) {
+  const {d, length} = routePixelPath(latlngs);
+  if (length <= 0) return;
+
+  const count = Math.max(
+    CONFIG.arrowMinCount,
+    Math.min(CONFIG.arrowMaxCount, Math.round(length / CONFIG.arrowSpacing))
+  );
+  const duration = length / CONFIG.arrowSpeed[state.speedIndex];
+  const elements = [];
+
+  for (let i = 0; i < count; i++) {
+    const el = document.createElementNS(SVG_NS, 'polygon');
+    el.setAttribute('points', FLOW_ARROW_POINTS);
+    el.setAttribute('fill', CONFIG.colors.flow);
+    el.setAttribute('class', 'flow-arrow');
+    el.style.offsetPath = `path('${d}')`;
+    el.style.animationDuration = `${duration}s`;
+    el.style.animationDelay = `${-(i / count) * duration}s`;
+    container.appendChild(el);
+    elements.push(el);
+  }
+
+  activeFlowArrows.push({latlngs, elements});
+}
+
+// Пересчитывает offset-path у всех активных штрихов после того, как
+// Leaflet пересчитал пиксельные координаты (конец зума/панорамы) —
+// иначе штрихи останутся «приклеены» к старой, уже не видимой линии.
+function layoutFlowArrows() {
+  for (const entry of activeFlowArrows) {
+    const {d} = routePixelPath(entry.latlngs);
+    for (const el of entry.elements) {
+      el.style.offsetPath = `path('${d}')`;
+    }
+  }
+}
+
+map.on('zoomend moveend', layoutFlowArrows);
 
 const baseLayer = L.geoJSON(null, {
   style: {
@@ -499,18 +587,18 @@ function renderYear(year, animate = state.playing) {
   });
 
   flowLayer.clearLayers();
+  clearFlowArrows();
 
   const { flow } = calculateFlows(state.currentYear);
   const values = [...flow.values()].filter(v => v > 0);
   const max = Math.max(...values, 1);
-  const speedClass = `flow-dash-speed-${state.speedIndex}`;
-  const dashClass = animate ? `flow-dash ${speedClass}` : '';
 
   // Каждая цепочка — от развилки (слияния/разделения/истока) до следующей
-  // развилки — рисуется одной линией с единой толщиной, а пунктир бежит
-  // по ней непрерывно. Толщина меняется именно на развилках: при слиянии
-  // становится больше (сумма слившихся потоков), при разделении — своя
-  // у каждого нового ответвления.
+  // развилки — рисуется одной линией с единой толщиной. Толщина меняется
+  // именно на развилках: при слиянии становится больше (сумма слившихся
+  // потоков), при разделении — своя у каждого нового ответвления. Сама
+  // линия сплошная; движение показывают отдельные штрихи-пятиугольники,
+  // бегущие вдоль неё через CSS offset-path.
   const routes = buildJunctionRoutes(flow);
 
   for (const route of routes) {
@@ -532,8 +620,7 @@ function renderYear(year, animate = state.playing) {
       opacity: 0.9,
       lineCap: 'round',
       lineJoin: 'round',
-      interactive: true,
-      className: dashClass
+      interactive: true
     });
 
     const names = namesForNodes(route.nodes);
@@ -549,6 +636,14 @@ function renderYear(year, animate = state.playing) {
     path.on('mouseout', () => path.setStyle({opacity: 0.9}));
 
     path.addTo(flowLayer);
+
+    if (animate) {
+      const el = path.getElement();
+      if (el && el.parentNode) {
+        const latlngs = coordinates.map(([lat, lon]) => L.latLng(lat, lon));
+        addFlowArrows(latlngs, el.parentNode);
+      }
+    }
   }
 
   state.flowsVisible = true;
@@ -603,6 +698,7 @@ function pauseAnimation() {
   state.playing=false;
   if(state.timer)clearInterval(state.timer);
   state.timer=null;
+  clearFlowArrows();
   state.flowsVisible=false;
   if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);
   updateAnimationButton();
