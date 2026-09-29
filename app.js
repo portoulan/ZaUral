@@ -8,7 +8,7 @@ const CONFIG = {
   },
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
-  arrowSpeed: [17, 37, 80],
+  arrowSpeed: [70, 150, 320],
   // Целевое расстояние между соседними штрихами на маршруте, px.
   arrowSpacing: 34,
   arrowMinCount: 3,
@@ -16,7 +16,7 @@ const CONFIG = {
   // Отдельный маршрут-«декорация»: кораблики, идущие по фиксированной
   // линии узлов (не зависит от величины потока/года).
   shipSpeed: [50, 100, 200],
-  shipCount: 5
+  shipCount: 2
 };
 
 
@@ -139,7 +139,7 @@ const state = {
   mapKind: null
 };
 
-const map = L.map('map', { zoomControl: true }).setView([55, 55], 4);
+const map = L.map('map', { zoomControl: true, fadeAnimation: false }).setView([55, 55], 4);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 10,
@@ -1328,7 +1328,7 @@ document.getElementById('nextYearBtn').onclick=()=>changeYear(1);
 
 // Кнопка донатов: по клику копирует номер карты в буфер обмена.
 // ЗАМЕНИТЕ на реальный номер карты — сейчас здесь плейсхолдер.
-const DONATE_CARD_NUMBER = '4276 5500 7827 1593';
+const DONATE_CARD_NUMBER = '0000 0000 0000 0000';
 
 (function setupDonateButton() {
   const btn = document.getElementById('donateBtn');
