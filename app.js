@@ -5,18 +5,7 @@ const CONFIG = {
     flow: '#d85b36',
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
-  },
-  // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
-  // (кнопка «Скорость»). Чем больше — тем быстрее.
-  arrowSpeed: [17, 37, 80],
-  // Целевое расстояние между соседними штрихами на маршруте, px.
-  arrowSpacing: 34,
-  arrowMinCount: 3,
-  arrowMaxCount: 14,
-  // Отдельный маршрут-«декорация»: кораблики, идущие по фиксированной
-  // линии узлов (не зависит от величины потока/года).
-  shipSpeed: [50, 100, 200],
-  shipCount: 5
+  }
 };
 
 
@@ -148,197 +137,31 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const flowLayer = L.layerGroup().addTo(map);
 
-// Анимация потока — маленькие штрихи-«пятиугольники» (левая часть
-// прямоугольная, правая — треугольная, остриём по направлению движения),
-// бегущие вдоль маршрута через CSS Motion Path (offset-path +
-// offset-distance). stroke-dasharray физически не умеет рисовать фигурный
-// штрих (только прямоугольные отрезки), поэтому форма задаётся отдельными
-// SVG-фигурами, которые двигает offset-path; offset-rotate:auto сам
-// поворачивает их по касательной маршрута на каждом изгибе. Это по-прежнему
-// чистый CSS — JS не расходуется на кадр, только на пересчёт offset-path
-// после зума/панорамы (см. layoutFlowArrows).
-(function injectFlowArrowStyles() {
-  if (document.getElementById('flow-arrow-styles')) return;
+// Внедряем CSS-анимацию «бегущего пунктира» (в духе демо
+// Leaflet.Path.DashFlow: https://ivansanchez.gitlab.io/Leaflet.Path.DashFlow/demo.html).
+// Это чистый CSS (stroke-dashoffset + @keyframes) без JS-цикла на каждый
+// кадр, поэтому при зуме/панораме ничего не приходится ставить на паузу —
+// анимация просто продолжает идти независимо от перерисовки геометрии.
+(function injectFlowDashStyles() {
+  if (document.getElementById('flow-dash-styles')) return;
   const style = document.createElement('style');
-  style.id = 'flow-arrow-styles';
+  style.id = 'flow-dash-styles';
   style.textContent = `
-    .flow-arrow {
-      animation-name: flowArrowMove;
+    .flow-dash {
+      stroke-dasharray: 10 14;
+      animation-name: flowDash;
       animation-timing-function: linear;
       animation-iteration-count: infinite;
-      offset-rotate: auto;
-      offset-anchor: 9px 5px;
-      pointer-events: none;
     }
-    @keyframes flowArrowMove {
-      from { offset-distance: 0%; }
-      to   { offset-distance: 100%; }
+    .flow-dash-speed-0 { animation-duration: 2.2s; }
+    .flow-dash-speed-1 { animation-duration: 1.1s; }
+    .flow-dash-speed-2 { animation-duration: 0.55s; }
+    @keyframes flowDash {
+      to { stroke-dashoffset: -24; }
     }
   `;
   document.head.appendChild(style);
 })();
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-// Вытянутый пятиугольник: левая часть — прямоугольная (ровный срез),
-// правая — треугольная (остриё). offset-rotate:auto довернёт фигуру по
-// направлению движения, поэтому форма задана «остриём вправо». Размер
-// масштабируется под величину потока (см. arrowScaleFor) — базовые
-// пропорции 18×10, центр (и офсет-якорь) всегда на половине ширины/высоты.
-function arrowPolygonPoints(scale) {
-  const rectX = 10 * scale;
-  const tipX = 18 * scale;
-  const h = 10 * scale;
-  return `0,0 ${rectX},0 ${tipX},${h / 2} ${rectX},${h} 0,${h}`;
-}
-
-// Активные штрихи текущего года: {latlngs, elements[]} — нужно, чтобы
-// пересчитать offset-path при зуме/панораме и убрать их при паузе или
-// перерисовке (это «сырые» SVG-элементы рядом с линиями, не объекты
-// Leaflet, поэтому flowLayer.clearLayers() их не затрагивает).
-let activeFlowArrows = [];
-
-function clearFlowArrows() {
-  for (const entry of activeFlowArrows) {
-    for (const el of entry.elements) el.remove();
-  }
-  activeFlowArrows = [];
-}
-
-function routePixelPath(latlngs) {
-  const points = latlngs.map(ll => map.latLngToLayerPoint(ll));
-  let d = `M${points[0].x},${points[0].y}`;
-  let length = 0;
-
-  for (let i = 1; i < points.length; i++) {
-    d += ` L${points[i].x},${points[i].y}`;
-    length += points[i - 1].distanceTo(points[i]);
-  }
-
-  return {d, length};
-}
-
-// Создаёт штрихи для одного маршрута и вешает на них CSS-анимацию
-// движения вдоль offset-path. Количество и длительность подобраны так,
-// чтобы расстояние между штрихами и их скорость (px/сек экрана) были
-// примерно одинаковыми у всех маршрутов, независимо от длины. Размер
-// штрихов (scale) — свой у каждого маршрута, по величине его потока.
-function addFlowArrows(latlngs, container, scale) {
-  const {d, length} = routePixelPath(latlngs);
-  if (length <= 0) return;
-
-  const count = Math.max(
-    CONFIG.arrowMinCount,
-    Math.min(CONFIG.arrowMaxCount, Math.round(length / CONFIG.arrowSpacing))
-  );
-  const duration = length / CONFIG.arrowSpeed[state.speedIndex];
-  const points = arrowPolygonPoints(scale);
-  const anchor = `${9 * scale}px ${5 * scale}px`;
-  const elements = [];
-
-  for (let i = 0; i < count; i++) {
-    const el = document.createElementNS(SVG_NS, 'polygon');
-    el.setAttribute('points', points);
-    el.setAttribute('fill', CONFIG.colors.flow);
-    el.setAttribute('class', 'flow-arrow');
-    el.style.offsetPath = `path('${d}')`;
-    el.style.offsetAnchor = anchor;
-    el.style.animationDuration = `${duration}s`;
-    el.style.animationDelay = `${-(i / count) * duration}s`;
-    container.appendChild(el);
-    elements.push(el);
-  }
-
-  activeFlowArrows.push({latlngs, elements});
-}
-
-// Пересчитывает offset-path у всех активных штрихов после того, как
-// Leaflet пересчитал пиксельные координаты (конец зума/панорамы) —
-// иначе штрихи останутся «приклеены» к старой, уже не видимой линии.
-function layoutFlowArrows() {
-  for (const entry of activeFlowArrows) {
-    const {d} = routePixelPath(entry.latlngs);
-    for (const el of entry.elements) {
-      el.style.offsetPath = `path('${d}')`;
-    }
-  }
-}
-
-map.on('zoomend moveend', layoutFlowArrows);
-
-// Отдельная декоративная анимация — кораблик, идущий по одному конкретному
-// заданному маршруту узлов (не связан с данными потока/года). Использует
-// тот же механизм offset-path и тот же activeFlowArrows/layoutFlowArrows,
-// что и обычные штрихи-пятиугольники, — просто добавляет в них ещё одну
-// «фигуру» другой формы, не меняя логику остальных маршрутов.
-(function injectFlowShipStyles() {
-  if (document.getElementById('flow-ship-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'flow-ship-styles';
-  style.textContent = `
-    .flow-ship {
-      animation-name: flowArrowMove;
-      animation-timing-function: linear;
-      animation-iteration-count: infinite;
-      offset-rotate: auto;
-      offset-anchor: 11px 8px;
-      pointer-events: none;
-    }
-  `;
-  document.head.appendChild(style);
-})();
-
-// Список узлов маршрута-декорации (парсится один раз при загрузке).
-const SHIP_ROUTE_NODES = (
-  'N189;N192;N193;N194;N195;N196;N197;N198;N199;N200;N201;N202;N203;N204;' +
-  'N205;N206;N207;N208;N209;N210;N211;N212;N213;N214;N215;N216;N217;N218;' +
-  'N219;N220;N221;N222;N223;N224;N225;N900;N901;N902;N903;N904;N905;N906;' +
-  'N907;N908;N909;N910;N911;N912;N913;N914;N915;N916;N917;N918;N919;N920;' +
-  'N921;N922;N923'
-).split(';').map(s => s.trim()).filter(Boolean);
-
-// Силуэт кораблика: корпус + парус, «носом» вправо (offset-rotate:auto
-// довернёт его по направлению движения на каждом изгибе маршрута).
-function createShipElement() {
-  const g = document.createElementNS(SVG_NS, 'g');
-  g.setAttribute('class', 'flow-ship');
-
-  const hull = document.createElementNS(SVG_NS, 'polygon');
-  hull.setAttribute('points', '0,9 18,9 22,11 18,13 2,13');
-  hull.setAttribute('fill', '#5b4636');
-  g.appendChild(hull);
-
-  const sail = document.createElementNS(SVG_NS, 'polygon');
-  sail.setAttribute('points', '6,9 6,0 13,9');
-  sail.setAttribute('fill', '#ffffff');
-  sail.setAttribute('stroke', '#c7cdd3');
-  sail.setAttribute('stroke-width', '0.5');
-  g.appendChild(sail);
-
-  return g;
-}
-
-// Добавляет кораблики на заданный маршрут (latlngs) — количество и
-// скорость берутся из CONFIG.shipCount/shipSpeed, не из толщины потока.
-function addShipMarkers(latlngs, container) {
-  const {d, length} = routePixelPath(latlngs);
-  if (length <= 0) return;
-
-  const count = CONFIG.shipCount;
-  const duration = length / CONFIG.shipSpeed[state.speedIndex];
-  const elements = [];
-
-  for (let i = 0; i < count; i++) {
-    const el = createShipElement();
-    el.style.offsetPath = `path('${d}')`;
-    el.style.animationDuration = `${duration}s`;
-    el.style.animationDelay = `${-(i / count) * duration}s`;
-    container.appendChild(el);
-    elements.push(el);
-  }
-
-  activeFlowArrows.push({latlngs, elements});
-}
 
 const baseLayer = L.geoJSON(null, {
   style: {
@@ -562,18 +385,6 @@ function weightFor(value,max,year=state.currentYear){
   return minWeight+(maxWeight-minWeight)*t;
 }
 
-// Масштаб штриха-пятиугольника по величине потока — та же логика (и та же
-// опорная величина 1908 года), что раньше использовалась для толщины линии.
-function arrowScaleFor(value,max,year=state.currentYear){
-  if(!value||value<=0)return 0.7;
-  const minScale=0.7,maxScale=2.0;
-  const reference1908=getFlowYearMaximum(1908);
-  const reference=Math.max(reference1908,max||0);
-  const ratio=reference>0?Math.max(0,Math.min(1,Number(value)/reference)):0;
-  const t=Math.sqrt(ratio);
-  return minScale+(maxScale-minScale)*t;
-}
-
 
 // Строит непрерывные цепочки узлов между «развилками» — точками слияния
 // или разделения потока (а не между соседними узлами). Узел считается
@@ -688,18 +499,18 @@ function renderYear(year, animate = state.playing) {
   });
 
   flowLayer.clearLayers();
-  clearFlowArrows();
 
   const { flow } = calculateFlows(state.currentYear);
   const values = [...flow.values()].filter(v => v > 0);
   const max = Math.max(...values, 1);
+  const speedClass = `flow-dash-speed-${state.speedIndex}`;
+  const dashClass = animate ? `flow-dash ${speedClass}` : '';
 
   // Каждая цепочка — от развилки (слияния/разделения/истока) до следующей
-  // развилки — рисуется одной линией с единой толщиной. Толщина меняется
-  // именно на развилках: при слиянии становится больше (сумма слившихся
-  // потоков), при разделении — своя у каждого нового ответвления. Сама
-  // линия сплошная; движение показывают отдельные штрихи-пятиугольники,
-  // бегущие вдоль неё через CSS offset-path.
+  // развилки — рисуется одной линией с единой толщиной, а пунктир бежит
+  // по ней непрерывно. Толщина меняется именно на развилках: при слиянии
+  // становится больше (сумма слившихся потоков), при разделении — своя
+  // у каждого нового ответвления.
   const routes = buildJunctionRoutes(flow);
 
   for (const route of routes) {
@@ -715,16 +526,14 @@ function renderYear(year, animate = state.playing) {
 
     if (coordinates.length < 2) continue;
 
-    // Линия невидима (opacity:0) — она нужна только как область наведения
-    // для попапа с названиями регионов; саму толщину/величину потока
-    // теперь показывает размер штрихов-пятиугольников, а не линия.
     const path = L.polyline(coordinates, {
       weight: weightFor(route.value, max),
       color: CONFIG.colors.flow,
-      opacity: 0,
+      opacity: 0.9,
       lineCap: 'round',
       lineJoin: 'round',
-      interactive: true
+      interactive: true,
+      className: dashClass
     });
 
     const names = namesForNodes(route.nodes);
@@ -736,44 +545,10 @@ function renderYear(year, animate = state.playing) {
       );
     }
 
+    path.on('mouseover', () => path.setStyle({opacity: 1}));
+    path.on('mouseout', () => path.setStyle({opacity: 0.9}));
+
     path.addTo(flowLayer);
-
-    if (animate) {
-      const scale = arrowScaleFor(route.value, max);
-      const el = path.getElement();
-      if (el && el.parentNode) {
-        const latlngs = coordinates.map(([lat, lon]) => L.latLng(lat, lon));
-        addFlowArrows(latlngs, el.parentNode, scale);
-      }
-    }
-  }
-
-  // Декоративный маршрут кораблика — отдельно от расчёта потоков, не
-  // зависит от года/данных. Рисуется только пока идёт анимация.
-  if (animate) {
-    const shipCoordinates = [];
-
-    for (const nodeId of SHIP_ROUTE_NODES) {
-      const node = state.nodes.get(nodeId);
-      if (!node) continue;
-      shipCoordinates.push([node.lat, node.lon]);
-    }
-
-    if (shipCoordinates.length >= 2) {
-      const shipGuide = L.polyline(shipCoordinates, {
-        weight: 1,
-        opacity: 0,
-        interactive: false
-      });
-
-      shipGuide.addTo(flowLayer);
-
-      const el = shipGuide.getElement();
-      if (el && el.parentNode) {
-        const latlngs = shipCoordinates.map(([lat, lon]) => L.latLng(lat, lon));
-        addShipMarkers(latlngs, el.parentNode);
-      }
-    }
   }
 
   state.flowsVisible = true;
@@ -828,7 +603,6 @@ function pauseAnimation() {
   state.playing=false;
   if(state.timer)clearInterval(state.timer);
   state.timer=null;
-  clearFlowArrows();
   state.flowsVisible=false;
   if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);
   updateAnimationButton();
