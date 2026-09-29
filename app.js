@@ -8,11 +8,15 @@ const CONFIG = {
   },
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
-  arrowSpeed: [17, 37, 80],
+  arrowSpeed: [70, 150, 320],
   // Целевое расстояние между соседними штрихами на маршруте, px.
   arrowSpacing: 34,
   arrowMinCount: 3,
-  arrowMaxCount: 14
+  arrowMaxCount: 14,
+  // Отдельный маршрут-«декорация»: кораблики, идущие по фиксированной
+  // линии узлов (не зависит от величины потока/года).
+  shipSpeed: [50, 100, 200],
+  shipCount: 2
 };
 
 
@@ -261,6 +265,80 @@ function layoutFlowArrows() {
 }
 
 map.on('zoomend moveend', layoutFlowArrows);
+
+// Отдельная декоративная анимация — кораблик, идущий по одному конкретному
+// заданному маршруту узлов (не связан с данными потока/года). Использует
+// тот же механизм offset-path и тот же activeFlowArrows/layoutFlowArrows,
+// что и обычные штрихи-пятиугольники, — просто добавляет в них ещё одну
+// «фигуру» другой формы, не меняя логику остальных маршрутов.
+(function injectFlowShipStyles() {
+  if (document.getElementById('flow-ship-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'flow-ship-styles';
+  style.textContent = `
+    .flow-ship {
+      animation-name: flowArrowMove;
+      animation-timing-function: linear;
+      animation-iteration-count: infinite;
+      offset-rotate: auto;
+      offset-anchor: 11px 8px;
+      pointer-events: none;
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
+// Список узлов маршрута-декорации (парсится один раз при загрузке).
+const SHIP_ROUTE_NODES = (
+  'N189;N192;N193;N194;N195;N196;N197;N198;N199;N200;N201;N202;N203;N204;' +
+  'N205;N206;N207;N208;N209;N210;N211;N212;N213;N214;N215;N216;N217;N218;' +
+  'N219;N220;N221;N222;N223;N224;N225;N900;N901;N902;N903;N904;N905;N906;' +
+  'N907;N908;N909;N910;N911;N912;N913;N914;N915;N916;N917;N918;N919;N920;' +
+  'N921;N922;N923'
+).split(';').map(s => s.trim()).filter(Boolean);
+
+// Силуэт кораблика: корпус + парус, «носом» вправо (offset-rotate:auto
+// довернёт его по направлению движения на каждом изгибе маршрута).
+function createShipElement() {
+  const g = document.createElementNS(SVG_NS, 'g');
+  g.setAttribute('class', 'flow-ship');
+
+  const hull = document.createElementNS(SVG_NS, 'polygon');
+  hull.setAttribute('points', '0,9 18,9 22,11 18,13 2,13');
+  hull.setAttribute('fill', '#5b4636');
+  g.appendChild(hull);
+
+  const sail = document.createElementNS(SVG_NS, 'polygon');
+  sail.setAttribute('points', '6,9 6,0 13,9');
+  sail.setAttribute('fill', '#ffffff');
+  sail.setAttribute('stroke', '#c7cdd3');
+  sail.setAttribute('stroke-width', '0.5');
+  g.appendChild(sail);
+
+  return g;
+}
+
+// Добавляет кораблики на заданный маршрут (latlngs) — количество и
+// скорость берутся из CONFIG.shipCount/shipSpeed, не из толщины потока.
+function addShipMarkers(latlngs, container) {
+  const {d, length} = routePixelPath(latlngs);
+  if (length <= 0) return;
+
+  const count = CONFIG.shipCount;
+  const duration = length / CONFIG.shipSpeed[state.speedIndex];
+  const elements = [];
+
+  for (let i = 0; i < count; i++) {
+    const el = createShipElement();
+    el.style.offsetPath = `path('${d}')`;
+    el.style.animationDuration = `${duration}s`;
+    el.style.animationDelay = `${-(i / count) * duration}s`;
+    container.appendChild(el);
+    elements.push(el);
+  }
+
+  activeFlowArrows.push({latlngs, elements});
+}
 
 const baseLayer = L.geoJSON(null, {
   style: {
@@ -666,6 +744,34 @@ function renderYear(year, animate = state.playing) {
       if (el && el.parentNode) {
         const latlngs = coordinates.map(([lat, lon]) => L.latLng(lat, lon));
         addFlowArrows(latlngs, el.parentNode, scale);
+      }
+    }
+  }
+
+  // Декоративный маршрут кораблика — отдельно от расчёта потоков, не
+  // зависит от года/данных. Рисуется только пока идёт анимация.
+  if (animate) {
+    const shipCoordinates = [];
+
+    for (const nodeId of SHIP_ROUTE_NODES) {
+      const node = state.nodes.get(nodeId);
+      if (!node) continue;
+      shipCoordinates.push([node.lat, node.lon]);
+    }
+
+    if (shipCoordinates.length >= 2) {
+      const shipGuide = L.polyline(shipCoordinates, {
+        weight: 1,
+        opacity: 0,
+        interactive: false
+      });
+
+      shipGuide.addTo(flowLayer);
+
+      const el = shipGuide.getElement();
+      if (el && el.parentNode) {
+        const latlngs = shipCoordinates.map(([lat, lon]) => L.latLng(lat, lon));
+        addShipMarkers(latlngs, el.parentNode);
       }
     }
   }
