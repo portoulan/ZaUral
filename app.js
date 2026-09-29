@@ -178,8 +178,15 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Вытянутый пятиугольник: левая часть — прямоугольная (ровный срез),
 // правая — треугольная (остриё). offset-rotate:auto довернёт фигуру по
-// направлению движения, поэтому форма задана «остриём вправо».
-const FLOW_ARROW_POINTS = '0,0 10,0 18,5 10,10 0,10';
+// направлению движения, поэтому форма задана «остриём вправо». Размер
+// масштабируется под величину потока (см. arrowScaleFor) — базовые
+// пропорции 18×10, центр (и офсет-якорь) всегда на половине ширины/высоты.
+function arrowPolygonPoints(scale) {
+  const rectX = 10 * scale;
+  const tipX = 18 * scale;
+  const h = 10 * scale;
+  return `0,0 ${rectX},0 ${tipX},${h / 2} ${rectX},${h} 0,${h}`;
+}
 
 // Активные штрихи текущего года: {latlngs, elements[]} — нужно, чтобы
 // пересчитать offset-path при зуме/панораме и убрать их при паузе или
@@ -210,8 +217,9 @@ function routePixelPath(latlngs) {
 // Создаёт штрихи для одного маршрута и вешает на них CSS-анимацию
 // движения вдоль offset-path. Количество и длительность подобраны так,
 // чтобы расстояние между штрихами и их скорость (px/сек экрана) были
-// примерно одинаковыми у всех маршрутов, независимо от длины.
-function addFlowArrows(latlngs, container) {
+// примерно одинаковыми у всех маршрутов, независимо от длины. Размер
+// штрихов (scale) — свой у каждого маршрута, по величине его потока.
+function addFlowArrows(latlngs, container, scale) {
   const {d, length} = routePixelPath(latlngs);
   if (length <= 0) return;
 
@@ -220,14 +228,17 @@ function addFlowArrows(latlngs, container) {
     Math.min(CONFIG.arrowMaxCount, Math.round(length / CONFIG.arrowSpacing))
   );
   const duration = length / CONFIG.arrowSpeed[state.speedIndex];
+  const points = arrowPolygonPoints(scale);
+  const anchor = `${9 * scale}px ${5 * scale}px`;
   const elements = [];
 
   for (let i = 0; i < count; i++) {
     const el = document.createElementNS(SVG_NS, 'polygon');
-    el.setAttribute('points', FLOW_ARROW_POINTS);
+    el.setAttribute('points', points);
     el.setAttribute('fill', CONFIG.colors.flow);
     el.setAttribute('class', 'flow-arrow');
     el.style.offsetPath = `path('${d}')`;
+    el.style.offsetAnchor = anchor;
     el.style.animationDuration = `${duration}s`;
     el.style.animationDelay = `${-(i / count) * duration}s`;
     container.appendChild(el);
@@ -473,6 +484,18 @@ function weightFor(value,max,year=state.currentYear){
   return minWeight+(maxWeight-minWeight)*t;
 }
 
+// Масштаб штриха-пятиугольника по величине потока — та же логика (и та же
+// опорная величина 1908 года), что раньше использовалась для толщины линии.
+function arrowScaleFor(value,max,year=state.currentYear){
+  if(!value||value<=0)return 0.7;
+  const minScale=0.7,maxScale=2.0;
+  const reference1908=getFlowYearMaximum(1908);
+  const reference=Math.max(reference1908,max||0);
+  const ratio=reference>0?Math.max(0,Math.min(1,Number(value)/reference)):0;
+  const t=Math.sqrt(ratio);
+  return minScale+(maxScale-minScale)*t;
+}
+
 
 // Строит непрерывные цепочки узлов между «развилками» — точками слияния
 // или разделения потока (а не между соседними узлами). Узел считается
@@ -614,10 +637,13 @@ function renderYear(year, animate = state.playing) {
 
     if (coordinates.length < 2) continue;
 
+    // Линия невидима (opacity:0) — она нужна только как область наведения
+    // для попапа с названиями регионов; саму толщину/величину потока
+    // теперь показывает размер штрихов-пятиугольников, а не линия.
     const path = L.polyline(coordinates, {
       weight: weightFor(route.value, max),
       color: CONFIG.colors.flow,
-      opacity: 0.9,
+      opacity: 0,
       lineCap: 'round',
       lineJoin: 'round',
       interactive: true
@@ -632,16 +658,14 @@ function renderYear(year, animate = state.playing) {
       );
     }
 
-    path.on('mouseover', () => path.setStyle({opacity: 1}));
-    path.on('mouseout', () => path.setStyle({opacity: 0.9}));
-
     path.addTo(flowLayer);
 
     if (animate) {
+      const scale = arrowScaleFor(route.value, max);
       const el = path.getElement();
       if (el && el.parentNode) {
         const latlngs = coordinates.map(([lat, lon]) => L.latLng(lat, lon));
-        addFlowArrows(latlngs, el.parentNode);
+        addFlowArrows(latlngs, el.parentNode, scale);
       }
     }
   }
