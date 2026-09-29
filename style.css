@@ -204,3 +204,21 @@ th { position:sticky; top:0; background:#f7f8f9; z-index:1; }
   box-shadow: 0 4px 14px rgba(0,0,0,.14);
 }
 .author-badge:hover { text-decoration: underline; }
+
+/* Кнопка донатов — над подписью автора, справа внизу */
+.donate-badge {
+  position: absolute;
+  z-index: 1000;
+  right: 14px;
+  bottom: 50px;
+  padding: 6px 11px;
+  background: rgba(255,255,255,.94);
+  border: 1px solid rgba(0,0,0,.12);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #26313b;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,.14);
+}
+.donate-badge:hover { background: #f2f5f7; }
+.donate-badge.copied { color: #1e6fe8; border-color: #1e6fe8; }
