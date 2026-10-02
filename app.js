@@ -8,15 +8,15 @@ const CONFIG = {
   },
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
-  arrowSpeed: [14, 30, 64],
+  arrowSpeed: [70, 150, 320],
   // Целевое расстояние между соседними штрихами на маршруте, px.
   arrowSpacing: 34,
-  arrowMinCount: 0,
+  arrowMinCount: 3,
   arrowMaxCount: 14,
   // Отдельный маршрут-«декорация»: кораблики, идущие по фиксированной
   // линии узлов (не зависит от величины потока/года).
   shipSpeed: [50, 100, 200],
-  shipCount: 5
+  shipCount: 2
 };
 
 
@@ -139,7 +139,7 @@ const state = {
   mapKind: null
 };
 
-const map = L.map('map', { zoomControl: true, fadeAnimation: false }).setView([55, 55], 4);
+const map = L.map('map', { zoomControl: true }).setView([55, 55], 4);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 10,
@@ -296,16 +296,6 @@ const SHIP_ROUTE_NODES = (
   'N907;N908;N909;N910;N911;N912;N913;N914;N915;N916;N917;N918;N919;N920;' +
   'N921;N922;N923'
 ).split(';').map(s => s.trim()).filter(Boolean);
-
-// Рёбра маршрута кораблика (в обе стороны) — по ним обычные штрихи
-// рисоваться не должны, чтобы не накладываться на анимацию кораблика.
-const SHIP_ROUTE_EDGES = new Set();
-for (let i = 0; i < SHIP_ROUTE_NODES.length - 1; i++) {
-  const a = SHIP_ROUTE_NODES[i];
-  const b = SHIP_ROUTE_NODES[i + 1];
-  SHIP_ROUTE_EDGES.add(`${a}>${b}`);
-  SHIP_ROUTE_EDGES.add(`${b}>${a}`);
-}
 
 // Силуэт кораблика: корпус + парус, «носом» вправо (offset-rotate:auto
 // довернёт его по направлению движения на каждом изгибе маршрута).
@@ -575,8 +565,8 @@ function weightFor(value,max,year=state.currentYear){
 // Масштаб штриха-пятиугольника по величине потока — та же логика (и та же
 // опорная величина 1908 года), что раньше использовалась для толщины линии.
 function arrowScaleFor(value,max,year=state.currentYear){
-  if(!value||value<=0)return 0.35;
-  const minScale=0.35,maxScale=2.2;
+  if(!value||value<=0)return 0.7;
+  const minScale=0.7,maxScale=2.0;
   const reference1908=getFlowYearMaximum(1908);
   const reference=Math.max(reference1908,max||0);
   const ratio=reference>0?Math.max(0,Math.min(1,Number(value)/reference)):0;
@@ -748,15 +738,7 @@ function renderYear(year, animate = state.playing) {
 
     path.addTo(flowLayer);
 
-    // Маршрут проходит по рёбрам, где уже идёт кораблик, — обычные
-    // штрихи здесь не рисуем, чтобы анимации не накладывались друг на
-    // друга.
-    const onShipRoute = route.nodes.some((nodeId, i) => {
-      if (i === route.nodes.length - 1) return false;
-      return SHIP_ROUTE_EDGES.has(`${nodeId}>${route.nodes[i + 1]}`);
-    });
-
-    if (animate && !onShipRoute) {
+    if (animate) {
       const scale = arrowScaleFor(route.value, max);
       const el = path.getElement();
       if (el && el.parentNode) {
@@ -1325,38 +1307,5 @@ document.getElementById('closeTable').onclick = () => {
 
 document.getElementById('prevYearBtn').onclick=()=>changeYear(-1);
 document.getElementById('nextYearBtn').onclick=()=>changeYear(1);
-
-// Кнопка донатов: по клику копирует номер карты в буфер обмена.
-// ЗАМЕНИТЕ на реальный номер карты — сейчас здесь плейсхолдер.
-const DONATE_CARD_NUMBER = '0000 0000 0000 0000';
-
-(function setupDonateButton() {
-  const btn = document.getElementById('donateBtn');
-  if (!btn) return;
-
-  const defaultLabel = btn.textContent;
-  let resetTimer = null;
-
-  btn.addEventListener('click', async () => {
-    const digitsOnly = DONATE_CARD_NUMBER.replace(/\s+/g, '');
-
-    try {
-      await navigator.clipboard.writeText(digitsOnly);
-    } catch (err) {
-      window.prompt('Номер карты для доната:', DONATE_CARD_NUMBER);
-      return;
-    }
-
-    btn.textContent = 'Скопировано ✓';
-    btn.classList.add('copied');
-    btn.title = DONATE_CARD_NUMBER;
-
-    if (resetTimer) clearTimeout(resetTimer);
-    resetTimer = setTimeout(() => {
-      btn.textContent = defaultLabel;
-      btn.classList.remove('copied');
-    }, 1800);
-  });
-})();
 
 init();
