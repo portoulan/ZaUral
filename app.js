@@ -9,10 +9,10 @@ const CONFIG = {
   flowArrowOpacity: 0.6,
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
-  arrowSpeed: [17, 37, 80],
+  arrowSpeed: [70, 150, 320],
   // Целевое расстояние между соседними штрихами на маршруте, px.
-  arrowSpacing: 20,
-  arrowMinCount: 1,
+  arrowSpacing: 34,
+  arrowMinCount: 3,
   arrowMaxCount: 14,
   // Минимальная длительность одного прохода штриха, сек — короткие
   // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
@@ -294,6 +294,17 @@ map.on('zoomend moveend', layoutFlowArrows);
       offset-anchor: 11px 8px;
       pointer-events: none;
     }
+    .ship-smoke {
+      animation-name: shipSmoke;
+      animation-timing-function: ease-out;
+      animation-iteration-count: infinite;
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+    @keyframes shipSmoke {
+      0%   { transform: translate(0, 0) scale(0.6); opacity: 0.55; }
+      100% { transform: translate(1.5px, -9px) scale(1.6); opacity: 0; }
+    }
   `;
   document.head.appendChild(style);
 })();
@@ -317,9 +328,9 @@ for (let i = 0; i < SHIP_ROUTE_NODES.length - 1; i++) {
   SHIP_ROUTE_EDGES.add(`${b}>${a}`);
 }
 
-// Силуэт пароходика: корпус + надстройка/рубка + труба с дымовой полосой,
-// «носом» вправо (offset-rotate:auto довернёт его по направлению движения
-// на каждом изгибе маршрута).
+// Силуэт пароходика: корпус + рубка + ДВЕ трубы с дымовыми полосами и
+// анимированным дымом, «носом» вправо (offset-rotate:auto довернёт его по
+// направлению движения на каждом изгибе маршрута).
 function createShipElement() {
   const g = document.createElementNS(SVG_NS, 'g');
   g.setAttribute('class', 'flow-ship');
@@ -330,30 +341,45 @@ function createShipElement() {
   g.appendChild(hull);
 
   const cabin = document.createElementNS(SVG_NS, 'rect');
-  cabin.setAttribute('x', '5');
-  cabin.setAttribute('y', '5');
-  cabin.setAttribute('width', '8');
-  cabin.setAttribute('height', '4');
+  cabin.setAttribute('x', '4');
+  cabin.setAttribute('y', '6');
+  cabin.setAttribute('width', '11');
+  cabin.setAttribute('height', '3');
   cabin.setAttribute('fill', '#e9edf0');
   cabin.setAttribute('stroke', '#b8bfc6');
   cabin.setAttribute('stroke-width', '0.5');
   g.appendChild(cabin);
 
-  const funnel = document.createElementNS(SVG_NS, 'rect');
-  funnel.setAttribute('x', '8');
-  funnel.setAttribute('y', '0');
-  funnel.setAttribute('width', '3');
-  funnel.setAttribute('height', '5');
-  funnel.setAttribute('fill', '#b5332e');
-  g.appendChild(funnel);
+  // Две трубы рядом, у каждой — своя дымовая полоса и свой дымок.
+  const funnelX = [6, 11];
 
-  const funnelBand = document.createElementNS(SVG_NS, 'rect');
-  funnelBand.setAttribute('x', '7.5');
-  funnelBand.setAttribute('y', '0');
-  funnelBand.setAttribute('width', '4');
-  funnelBand.setAttribute('height', '1.3');
-  funnelBand.setAttribute('fill', '#20232a');
-  g.appendChild(funnelBand);
+  funnelX.forEach((x, i) => {
+    const funnel = document.createElementNS(SVG_NS, 'rect');
+    funnel.setAttribute('x', String(x));
+    funnel.setAttribute('y', '0');
+    funnel.setAttribute('width', '2.4');
+    funnel.setAttribute('height', '6');
+    funnel.setAttribute('fill', '#b5332e');
+    g.appendChild(funnel);
+
+    const band = document.createElementNS(SVG_NS, 'rect');
+    band.setAttribute('x', String(x - 0.3));
+    band.setAttribute('y', '0');
+    band.setAttribute('width', '3');
+    band.setAttribute('height', '1.2');
+    band.setAttribute('fill', '#20232a');
+    g.appendChild(band);
+
+    const smoke = document.createElementNS(SVG_NS, 'circle');
+    smoke.setAttribute('cx', String(x + 1.2));
+    smoke.setAttribute('cy', '-0.5');
+    smoke.setAttribute('r', '1.6');
+    smoke.setAttribute('fill', '#c7cdd3');
+    smoke.setAttribute('class', 'ship-smoke');
+    smoke.style.animationDuration = '1.5s';
+    smoke.style.animationDelay = `${i * -0.75}s`;
+    g.appendChild(smoke);
+  });
 
   return g;
 }
