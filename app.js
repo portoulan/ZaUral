@@ -2,10 +2,11 @@
 const CONFIG = {
   years: Array.from({length: 21}, (_, i) => 1896 + i),
   colors: {
-    flow: '#d85b36',
+    flow: '#0a1f44',
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
   },
+  flowArrowOpacity: 0.6,
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
   arrowSpeed: [70, 150, 320],
@@ -13,10 +14,13 @@ const CONFIG = {
   arrowSpacing: 34,
   arrowMinCount: 3,
   arrowMaxCount: 14,
+  // Минимальная длительность одного прохода штриха, сек — короткие
+  // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
+  arrowMinDuration: 1.1,
   // Отдельный маршрут-«декорация»: кораблики, идущие по фиксированной
   // линии узлов (не зависит от величины потока/года).
   shipSpeed: [50, 100, 200],
-  shipCount: 2
+  shipCount: 5
 };
 
 
@@ -231,7 +235,12 @@ function addFlowArrows(latlngs, container, scale) {
     CONFIG.arrowMinCount,
     Math.min(CONFIG.arrowMaxCount, Math.round(length / CONFIG.arrowSpacing))
   );
-  const duration = length / CONFIG.arrowSpeed[state.speedIndex];
+  // Минимальная длительность — чтобы короткие маршруты (мало узлов) не
+  // пробегались почти мгновенно на общей для всех px/сек-скорости.
+  const duration = Math.max(
+    CONFIG.arrowMinDuration,
+    length / CONFIG.arrowSpeed[state.speedIndex]
+  );
   const points = arrowPolygonPoints(scale);
   const anchor = `${9 * scale}px ${5 * scale}px`;
   const elements = [];
@@ -240,6 +249,7 @@ function addFlowArrows(latlngs, container, scale) {
     const el = document.createElementNS(SVG_NS, 'polygon');
     el.setAttribute('points', points);
     el.setAttribute('fill', CONFIG.colors.flow);
+    el.setAttribute('fill-opacity', CONFIG.flowArrowOpacity);
     el.setAttribute('class', 'flow-arrow');
     el.style.offsetPath = `path('${d}')`;
     el.style.offsetAnchor = anchor;
@@ -307,23 +317,43 @@ for (let i = 0; i < SHIP_ROUTE_NODES.length - 1; i++) {
   SHIP_ROUTE_EDGES.add(`${b}>${a}`);
 }
 
-// Силуэт кораблика: корпус + парус, «носом» вправо (offset-rotate:auto
-// довернёт его по направлению движения на каждом изгибе маршрута).
+// Силуэт пароходика: корпус + надстройка/рубка + труба с дымовой полосой,
+// «носом» вправо (offset-rotate:auto довернёт его по направлению движения
+// на каждом изгибе маршрута).
 function createShipElement() {
   const g = document.createElementNS(SVG_NS, 'g');
   g.setAttribute('class', 'flow-ship');
 
   const hull = document.createElementNS(SVG_NS, 'polygon');
   hull.setAttribute('points', '0,9 18,9 22,11 18,13 2,13');
-  hull.setAttribute('fill', '#5b4636');
+  hull.setAttribute('fill', '#3d4450');
   g.appendChild(hull);
 
-  const sail = document.createElementNS(SVG_NS, 'polygon');
-  sail.setAttribute('points', '6,9 6,0 13,9');
-  sail.setAttribute('fill', '#ffffff');
-  sail.setAttribute('stroke', '#c7cdd3');
-  sail.setAttribute('stroke-width', '0.5');
-  g.appendChild(sail);
+  const cabin = document.createElementNS(SVG_NS, 'rect');
+  cabin.setAttribute('x', '5');
+  cabin.setAttribute('y', '5');
+  cabin.setAttribute('width', '8');
+  cabin.setAttribute('height', '4');
+  cabin.setAttribute('fill', '#e9edf0');
+  cabin.setAttribute('stroke', '#b8bfc6');
+  cabin.setAttribute('stroke-width', '0.5');
+  g.appendChild(cabin);
+
+  const funnel = document.createElementNS(SVG_NS, 'rect');
+  funnel.setAttribute('x', '8');
+  funnel.setAttribute('y', '0');
+  funnel.setAttribute('width', '3');
+  funnel.setAttribute('height', '5');
+  funnel.setAttribute('fill', '#b5332e');
+  g.appendChild(funnel);
+
+  const funnelBand = document.createElementNS(SVG_NS, 'rect');
+  funnelBand.setAttribute('x', '7.5');
+  funnelBand.setAttribute('y', '0');
+  funnelBand.setAttribute('width', '4');
+  funnelBand.setAttribute('height', '1.3');
+  funnelBand.setAttribute('fill', '#20232a');
+  g.appendChild(funnelBand);
 
   return g;
 }
@@ -824,12 +854,16 @@ function buildYearButtons() {
     btn.textContent=year; btn.dataset.year=year;
     btn.onclick=()=>{
       const wasPlaying=state.playing;
-      if(wasPlaying) pauseAnimation();
 
+      // Перестраиваем маршруты, НЕ снимая flowLayer с карты заранее —
+      // иначе у новых линий ещё нет DOM-элемента (getElement()===null) и
+      // штрихи/кораблики создать не на чем (анимация пропадала при смене года).
       renderYear(year, wasPlaying);
 
-      if(wasPlaying) startAnimation();
-      else {
+      if(wasPlaying){
+        state.playing=true;
+        updateAnimationButton();
+      } else {
         state.playing=false;
         state.flowsVisible=false;
         if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
@@ -890,13 +924,15 @@ function changeYear(delta) {
   if(ni===i)return;
 
   const wasPlaying=state.playing;
-  // Rebuild the selected year without changing the user's animation preference.
-  if(wasPlaying) pauseAnimation();
-
+  // Перестраиваем маршруты, НЕ снимая flowLayer с карты заранее — иначе
+  // у новых линий ещё нет DOM-элемента и штрихи/кораблики создать не на
+  // чем (анимация пропадала при смене года).
   renderYear(ys[ni], wasPlaying);
 
-  if(wasPlaying) startAnimation();
-  else {
+  if(wasPlaying){
+    state.playing=true;
+    updateAnimationButton();
+  } else {
     state.playing=false;
     state.flowsVisible=false;
     if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
@@ -1347,7 +1383,7 @@ const DONATE_CARD_NUMBER = '0000 0000 0000 0000';
       return;
     }
 
-    btn.textContent = 'Скопировано ✓';
+    btn.textContent = `Скопировано: ${DONATE_CARD_NUMBER}`;
     btn.classList.add('copied');
     btn.title = DONATE_CARD_NUMBER;
 
@@ -1355,7 +1391,7 @@ const DONATE_CARD_NUMBER = '0000 0000 0000 0000';
     resetTimer = setTimeout(() => {
       btn.textContent = defaultLabel;
       btn.classList.remove('copied');
-    }, 1800);
+    }, 5000);
   });
 })();
 
