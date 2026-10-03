@@ -439,7 +439,7 @@ const baseLayer = L.geoJSON(null, {
     color: CONFIG.colors.boundary,
     weight: 1.25,
     fillColor: CONFIG.colors.boundaryFill,
-    fillOpacity: 0.42
+    fillOpacity: 0.72
   },
   onEachFeature: (feature, layer) => {
     const raw = feature?.properties?.prov_ENG || feature?.properties?.name || feature?.properties?.NAME;
@@ -1074,16 +1074,16 @@ function buildRegionValues(kind) {
 
 // Красные оттенки — карта "ИСХОД"
 const FROM_COLORS = [
-  'rgba(178, 34, 34, 0.99)', // 1-й диапазон
-  'rgba(255, 0, 0, 0.99)', // 2-й
-  'rgba(238, 32, 77, 0.99)', // 3-й
-  'rgba(240, 128, 128, 0.99)',   // 4-й
-  'rgba(180, 0, 0, 0.99)'      // 5-й
+  'rgba(255, 224, 224, 0.99)', // 1-й диапазон
+  'rgba(255, 145, 110, 0.99)', // 2-й
+  'rgba(232, 55, 40, 0.99)', // 3-й
+  'rgba(160, 20, 25, 0.99)',   // 4-й
+  'rgba(75, 0, 15, 0.99)'      // 5-й
 ];
 
 // Зелёные оттенки — карта "ВОДВОРЕНИЕ"
 const TO_COLORS = [
-  'rgba(152, 251, 152, 0.99)', // 1-й диапазон
+  'rgba(230, 250, 230, 0.99)', // 1-й диапазон
   'rgba(180, 240, 160, 0.99)', // 2-й
   'rgba(85, 190, 85, 0.99)', // 3-й
   'rgba(40, 130, 45, 0.99)',   // 4-й
