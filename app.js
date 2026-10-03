@@ -17,10 +17,9 @@ const CONFIG = {
   // Минимальная длительность одного прохода штриха, сек — короткие
   // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
   arrowMinDuration: 1.1,
-  // Отдельный маршрут-«декорация»: кораблики, идущие по фиксированной
-  // линии узлов (не зависит от величины потока/года).
-  shipSpeed: [50, 100, 200],
-  shipCount: 5
+  // Маршруты-декорации с корабликами (список и число кораблей на каждом —
+  // в SHIP_ROUTES). Скорость общая для всех — px/сек экрана.
+  shipSpeed: [50, 100, 200]
 };
 
 
@@ -316,6 +315,7 @@ const SHIP_ROUTES = [
   {
     yearMin: 1896,
     yearMax: 1900,
+    shipCount: 5,
     nodes: (
       'N189;N192;N193;N194;N195;N196;N197;N198;N199;N200;N201;N202;N203;N204;' +
       'N205;N206;N207;N208;N209;N210;N211;N212;N213;N214;N215;N216;N217;N218;' +
@@ -327,7 +327,8 @@ const SHIP_ROUTES = [
   {
     yearMin: 1913,
     yearMax: 1914,
-    nodes: 'N585;N592'.split(';').map(s => s.trim()).filter(Boolean)
+    shipCount: 1,
+    nodes: 'N585;N587;N588;N589;N590;N591;N592'.split(';').map(s => s.trim()).filter(Boolean)
   }
 ];
 
@@ -435,13 +436,13 @@ function createShipElement() {
   return g;
 }
 
-// Добавляет кораблики на заданный маршрут (latlngs) — количество и
-// скорость берутся из CONFIG.shipCount/shipSpeed, не из толщины потока.
-function addShipMarkers(latlngs, container) {
+// Добавляет кораблики на заданный маршрут (latlngs) — количество задаётся
+// отдельно для каждого маршрута (route.shipCount), скорость общая —
+// CONFIG.shipSpeed. Не зависит от толщины потока.
+function addShipMarkers(latlngs, container, count) {
   const {d, length} = routePixelPath(latlngs);
   if (length <= 0) return;
 
-  const count = CONFIG.shipCount;
   const duration = length / CONFIG.shipSpeed[state.speedIndex];
   const elements = [];
 
@@ -917,7 +918,7 @@ function renderYear(year, animate = state.playing) {
       const el = shipGuide.getElement();
       if (el && el.parentNode) {
         const latlngs = shipCoordinates.map(([lat, lon]) => L.latLng(lat, lon));
-        addShipMarkers(latlngs, el.parentNode);
+        addShipMarkers(latlngs, el.parentNode, route.shipCount);
       }
     }
   }
