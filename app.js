@@ -9,11 +9,11 @@ const CONFIG = {
   flowArrowOpacity: 0.6,
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
-  arrowSpeed: [17, 37, 80],
+  arrowSpeed: [70, 150, 320],
   // Целевое расстояние между соседними штрихами на маршруте, px.
-  arrowSpacing: 30,
-  arrowMinCount: 2,
-  arrowMaxCount: 10,
+  arrowSpacing: 34,
+  arrowMinCount: 3,
+  arrowMaxCount: 14,
   // Минимальная длительность одного прохода штриха, сек — короткие
   // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
   arrowMinDuration: 1.1,
@@ -26,7 +26,8 @@ const CONFIG = {
 
 const CHART_COLORS = [
   '#1f77b4', '#d62728', '#2ca02c', '#9467bd', '#ff7f0e',
-  '#17becf', '#e377c2', '#8c564b', '#bcbd22', '#3366cc'
+  '#17becf', '#e377c2', '#8c564b', '#bcbd22', '#3366cc',
+  '#17a673', '#b35900'
 ];
 const OTHER_COLOR = '#808080';
 
@@ -326,6 +327,33 @@ for (let i = 0; i < SHIP_ROUTE_NODES.length - 1; i++) {
   const b = SHIP_ROUTE_NODES[i + 1];
   SHIP_ROUTE_EDGES.add(`${a}>${b}`);
   SHIP_ROUTE_EDGES.add(`${b}>${a}`);
+}
+
+// Режет цепочку узлов на непрерывные отрезки по признаку «лежит ребро на
+// пути кораблика или нет» — так штрихи можно погасить именно там, где
+// реально идёт кораблик, а не на всём объединённом отрезке целиком
+// (иначе гасло и то, что до/после пути кораблика, но входит в ту же
+// цепочку от развилки до развилки).
+function splitByShipRoute(nodes) {
+  const segments = [];
+  let current = [nodes[0]];
+  let currentOnShip = null;
+
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const onShip = SHIP_ROUTE_EDGES.has(`${nodes[i]}>${nodes[i + 1]}`);
+    if (currentOnShip === null) currentOnShip = onShip;
+
+    if (onShip !== currentOnShip) {
+      segments.push({nodes: current, onShip: currentOnShip});
+      current = [nodes[i]];
+      currentOnShip = onShip;
+    }
+
+    current.push(nodes[i + 1]);
+  }
+
+  segments.push({nodes: current, onShip: currentOnShip});
+  return segments;
 }
 
 // Силуэт пароходика: корпус + рубка + ДВЕ трубы с дымовыми полосами и
@@ -804,27 +832,42 @@ function renderYear(year, animate = state.playing) {
 
     path.addTo(flowLayer);
 
-    // Маршрут проходит по рёбрам, где уже идёт кораблик, — обычные
-    // штрихи здесь не рисуем, чтобы анимации не накладывались друг на
-    // друга.
-    const onShipRoute = route.nodes.some((nodeId, i) => {
-      if (i === route.nodes.length - 1) return false;
-      return SHIP_ROUTE_EDGES.has(`${nodeId}>${route.nodes[i + 1]}`);
-    });
-
-    if (animate && !onShipRoute) {
+    // Там, где отрезок проходит по рёбрам маршрута кораблика, обычные
+    // штрихи не рисуем (чтобы анимации не накладывались друг на друга) —
+    // но ТОЛЬКО на этой части: если один и тот же объединённый отрезок
+    // «от развилки до развилки» частично идёт по пути кораблика, а
+    // частично нет (например, N703→N189→N192→…), штрихи остаются на
+    // части до/после пути кораблика.
+    if (animate) {
       const scale = arrowScaleFor(route.value, max);
       const el = path.getElement();
+
       if (el && el.parentNode) {
-        const latlngs = coordinates.map(([lat, lon]) => L.latLng(lat, lon));
-        addFlowArrows(latlngs, el.parentNode, scale);
+        const segments = splitByShipRoute(route.nodes);
+
+        for (const segment of segments) {
+          if (segment.onShip || segment.nodes.length < 2) continue;
+
+          const segCoords = [];
+          for (const nodeId of segment.nodes) {
+            const node = state.nodes.get(nodeId);
+            if (!node) continue;
+            segCoords.push(L.latLng(node.lat, node.lon));
+          }
+
+          if (segCoords.length >= 2) {
+            addFlowArrows(segCoords, el.parentNode, scale);
+          }
+        }
       }
     }
   }
 
   // Декоративный маршрут кораблика — отдельно от расчёта потоков, не
-  // зависит от года/данных. Рисуется только пока идёт анимация.
-  if (animate) {
+  // зависит от данных по году. Рисуется только пока идёт анимация и
+  // только в 1896–1900 годах включительно.
+  const shipYearsActive = state.currentYear >= 1896 && state.currentYear <= 1900;
+  if (animate && shipYearsActive) {
     const shipCoordinates = [];
 
     for (const nodeId of SHIP_ROUTE_NODES) {
@@ -1201,8 +1244,8 @@ function showChart(kind) {
     ? result.sourceGrandTotal
     : list.reduce((sum, r) => sum + r.value, 0);
 
-  const top = list.slice(0, 10);
-  const rest = list.slice(10).reduce((sum, r) => sum + r.value, 0);
+  const top = list.slice(0, 12);
+  const rest = list.slice(12).reduce((sum, r) => sum + r.value, 0);
   const labels = top.map(r => r.name);
   const values = top.map(r => r.value);
   if (rest > 0) {
