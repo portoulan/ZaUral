@@ -11,9 +11,9 @@ const CONFIG = {
   // (кнопка «Скорость»). Чем больше — тем быстрее.
   arrowSpeed: [70, 150, 320],
   // Целевое расстояние между соседними штрихами на маршруте, px.
-  arrowSpacing: 34,
-  arrowMinCount: 3,
-  arrowMaxCount: 14,
+  arrowSpacing: 35,
+  arrowMinCount: 1,
+  arrowMaxCount: 30,
   // Минимальная длительность одного прохода штриха, сек — короткие
   // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
   arrowMinDuration: 1.1,
@@ -463,7 +463,7 @@ const baseLayer = L.geoJSON(null, {
     color: CONFIG.colors.boundary,
     weight: 1.25,
     fillColor: CONFIG.colors.boundaryFill,
-    fillOpacity: 0.42
+    fillOpacity: 0.75
   },
   onEachFeature: (feature, layer) => {
     const raw = feature?.properties?.prov_ENG || feature?.properties?.name || feature?.properties?.NAME;
@@ -1104,20 +1104,20 @@ function buildRegionValues(kind) {
 
 // Красные оттенки — карта "ИСХОД"
 const FROM_COLORS = [
-  'rgba(255, 220, 220, 0.95)', // 1-й диапазон
-  'rgba(255, 175, 175, 0.95)', // 2-й
-  'rgba(255, 125, 125, 0.95)', // 3-й
-  'rgba(230, 60, 60, 0.95)',   // 4-й
-  'rgba(180, 0, 0, 0.95)'      // 5-й
+  'rgba(240, 230, 140, 0.99)', // 1-й диапазон
+  'rgba(255, 145, 110, 0.99)', // 2-й
+  'rgba(232, 55, 40, 0.99)', // 3-й
+  'rgba(160, 20, 25, 0.99)',   // 4-й
+  'rgba(75, 0, 15, 0.99)'      // 5-й
 ];
 
 // Зелёные оттенки — карта "ВОДВОРЕНИЕ"
 const TO_COLORS = [
-  'rgba(215, 245, 220, 0.95)', // 1-й диапазон
-  'rgba(165, 230, 175, 0.95)', // 2-й
-  'rgba(105, 205, 125, 0.95)', // 3-й
-  'rgba(40, 160, 65, 0.95)',   // 4-й
-  'rgba(0, 105, 35, 0.95)'     // 5-й
+  'rgba(238, 232, 170, 0.99)', // 1-й диапазон
+  'rgba(180, 240, 160, 0.99)', // 2-й
+  'rgba(85, 190, 85, 0.99)', // 3-й
+  'rgba(40, 130, 45, 0.99)',   // 4-й
+  'rgba(20, 65, 25, 0.99)'     // 5-й
 ];
 
 function colorScale(kind, t) {
