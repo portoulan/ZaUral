@@ -9,11 +9,11 @@ const CONFIG = {
   flowArrowOpacity: 0.6,
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
-  arrowSpeed: [35, 75, 160],
+  arrowSpeed: [70, 150, 320],
   // Целевое расстояние между соседними штрихами на маршруте, px.
-  arrowSpacing: 25,
-  arrowMinCount: 1,
-  arrowMaxCount: 30,
+  arrowSpacing: 34,
+  arrowMinCount: 3,
+  arrowMaxCount: 14,
   // Минимальная длительность одного прохода штриха, сек — короткие
   // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
   arrowMinDuration: 1.1,
@@ -310,37 +310,60 @@ map.on('zoomend moveend', layoutFlowArrows);
   document.head.appendChild(style);
 })();
 
-// Список узлов маршрута-декорации (парсится один раз при загрузке).
-const SHIP_ROUTE_NODES = (
-  'N189;N192;N193;N194;N195;N196;N197;N198;N199;N200;N201;N202;N203;N204;' +
-  'N205;N206;N207;N208;N209;N210;N211;N212;N213;N214;N215;N216;N217;N218;' +
-  'N219;N220;N221;N222;N223;N224;N225;N900;N901;N902;N903;N904;N905;N906;' +
-  'N907;N908;N909;N910;N911;N912;N913;N914;N915;N916;N917;N918;N919;N920;' +
-  'N921;N922;N923'
-).split(';').map(s => s.trim()).filter(Boolean);
+// Маршруты-декорации с корабликами. У каждого свой список узлов и свой
+// диапазон лет, когда кораблик по нему идёт (yearMin..yearMax включительно).
+const SHIP_ROUTES = [
+  {
+    yearMin: 1896,
+    yearMax: 1900,
+    nodes: (
+      'N189;N192;N193;N194;N195;N196;N197;N198;N199;N200;N201;N202;N203;N204;' +
+      'N205;N206;N207;N208;N209;N210;N211;N212;N213;N214;N215;N216;N217;N218;' +
+      'N219;N220;N221;N222;N223;N224;N225;N900;N901;N902;N903;N904;N905;N906;' +
+      'N907;N908;N909;N910;N911;N912;N913;N914;N915;N916;N917;N918;N919;N920;' +
+      'N921;N922;N923'
+    ).split(';').map(s => s.trim()).filter(Boolean)
+  },
+  {
+    yearMin: 1913,
+    yearMax: 1914,
+    nodes: 'N585;N592'.split(';').map(s => s.trim()).filter(Boolean)
+  }
+];
 
-// Рёбра маршрута кораблика (в обе стороны) — по ним обычные штрихи
-// рисоваться не должны, чтобы не накладываться на анимацию кораблика.
-const SHIP_ROUTE_EDGES = new Set();
-for (let i = 0; i < SHIP_ROUTE_NODES.length - 1; i++) {
-  const a = SHIP_ROUTE_NODES[i];
-  const b = SHIP_ROUTE_NODES[i + 1];
-  SHIP_ROUTE_EDGES.add(`${a}>${b}`);
-  SHIP_ROUTE_EDGES.add(`${b}>${a}`);
+// Рёбра маршрутов кораблика, активных именно в данном году (в обе
+// стороны) — по ним обычные штрихи рисоваться не должны, чтобы не
+// накладываться на анимацию кораблика. Года, когда кораблик на этом
+// маршруте не идёт, сюда не попадают — там штрихи остаются как обычно.
+function shipEdgesForYear(year) {
+  const edges = new Set();
+
+  for (const route of SHIP_ROUTES) {
+    if (year < route.yearMin || year > route.yearMax) continue;
+
+    for (let i = 0; i < route.nodes.length - 1; i++) {
+      const a = route.nodes[i];
+      const b = route.nodes[i + 1];
+      edges.add(`${a}>${b}`);
+      edges.add(`${b}>${a}`);
+    }
+  }
+
+  return edges;
 }
 
 // Режет цепочку узлов на непрерывные отрезки по признаку «лежит ребро на
-// пути кораблика или нет» — так штрихи можно погасить именно там, где
-// реально идёт кораблик, а не на всём объединённом отрезке целиком
-// (иначе гасло и то, что до/после пути кораблика, но входит в ту же
-// цепочку от развилки до развилки).
-function splitByShipRoute(nodes) {
+// пути (активного в этом году) кораблика или нет» — так штрихи можно
+// погасить именно там, где реально идёт кораблик, а не на всём
+// объединённом отрезке целиком (иначе гасло и то, что до/после пути
+// кораблика, но входит в ту же цепочку от развилки до развилки).
+function splitByShipRoute(nodes, shipEdges) {
   const segments = [];
   let current = [nodes[0]];
   let currentOnShip = null;
 
   for (let i = 0; i < nodes.length - 1; i++) {
-    const onShip = SHIP_ROUTE_EDGES.has(`${nodes[i]}>${nodes[i + 1]}`);
+    const onShip = shipEdges.has(`${nodes[i]}>${nodes[i + 1]}`);
     if (currentOnShip === null) currentOnShip = onShip;
 
     if (onShip !== currentOnShip) {
@@ -439,7 +462,7 @@ const baseLayer = L.geoJSON(null, {
     color: CONFIG.colors.boundary,
     weight: 1.25,
     fillColor: CONFIG.colors.boundaryFill,
-    fillOpacity: 0.77
+    fillOpacity: 0.42
   },
   onEachFeature: (feature, layer) => {
     const raw = feature?.properties?.prov_ENG || feature?.properties?.name || feature?.properties?.NAME;
@@ -787,6 +810,7 @@ function renderYear(year, animate = state.playing) {
   const { flow } = calculateFlows(state.currentYear);
   const values = [...flow.values()].filter(v => v > 0);
   const max = Math.max(...values, 1);
+  const shipEdges = shipEdgesForYear(state.currentYear);
 
   // Каждая цепочка — от развилки (слияния/разделения/истока) до следующей
   // развилки — рисуется одной линией с единой толщиной. Толщина меняется
@@ -843,7 +867,7 @@ function renderYear(year, animate = state.playing) {
       const el = path.getElement();
 
       if (el && el.parentNode) {
-        const segments = splitByShipRoute(route.nodes);
+        const segments = splitByShipRoute(route.nodes, shipEdges);
 
         for (const segment of segments) {
           if (segment.onShip || segment.nodes.length < 2) continue;
@@ -863,20 +887,25 @@ function renderYear(year, animate = state.playing) {
     }
   }
 
-  // Декоративный маршрут кораблика — отдельно от расчёта потоков, не
-  // зависит от данных по году. Рисуется только пока идёт анимация и
-  // только в 1896–1900 годах включительно.
-  const shipYearsActive = state.currentYear >= 1896 && state.currentYear <= 1900;
-  if (animate && shipYearsActive) {
-    const shipCoordinates = [];
+  // Декоративные маршруты с корабликами — отдельно от расчёта потоков, не
+  // зависят от данных по году. Каждый рисуется только пока идёт анимация
+  // и только в своём диапазоне лет (route.yearMin..route.yearMax).
+  if (animate) {
+    for (const route of SHIP_ROUTES) {
+      if (state.currentYear < route.yearMin || state.currentYear > route.yearMax) {
+        continue;
+      }
 
-    for (const nodeId of SHIP_ROUTE_NODES) {
-      const node = state.nodes.get(nodeId);
-      if (!node) continue;
-      shipCoordinates.push([node.lat, node.lon]);
-    }
+      const shipCoordinates = [];
 
-    if (shipCoordinates.length >= 2) {
+      for (const nodeId of route.nodes) {
+        const node = state.nodes.get(nodeId);
+        if (!node) continue;
+        shipCoordinates.push([node.lat, node.lon]);
+      }
+
+      if (shipCoordinates.length < 2) continue;
+
       const shipGuide = L.polyline(shipCoordinates, {
         weight: 1,
         opacity: 0,
@@ -1074,20 +1103,20 @@ function buildRegionValues(kind) {
 
 // Красные оттенки — карта "ИСХОД"
 const FROM_COLORS = [
-  'rgba(240, 230, 140, 0.99)', // 1-й диапазон
-  'rgba(255, 145, 110, 0.99)', // 2-й
-  'rgba(232, 55, 40, 0.99)', // 3-й
-  'rgba(160, 20, 25, 0.99)',   // 4-й
-  'rgba(75, 0, 15, 0.99)'      // 5-й
+  'rgba(255, 220, 220, 0.95)', // 1-й диапазон
+  'rgba(255, 175, 175, 0.95)', // 2-й
+  'rgba(255, 125, 125, 0.95)', // 3-й
+  'rgba(230, 60, 60, 0.95)',   // 4-й
+  'rgba(180, 0, 0, 0.95)'      // 5-й
 ];
 
 // Зелёные оттенки — карта "ВОДВОРЕНИЕ"
 const TO_COLORS = [
-  'rgba(238, 232, 170, 0.99)', // 1-й диапазон
-  'rgba(180, 240, 160, 0.99)', // 2-й
-  'rgba(85, 190, 85, 0.99)', // 3-й
-  'rgba(40, 130, 45, 0.99)',   // 4-й
-  'rgba(20, 65, 25, 0.99)'     // 5-й
+  'rgba(215, 245, 220, 0.95)', // 1-й диапазон
+  'rgba(165, 230, 175, 0.95)', // 2-й
+  'rgba(105, 205, 125, 0.95)', // 3-й
+  'rgba(40, 160, 65, 0.95)',   // 4-й
+  'rgba(0, 105, 35, 0.95)'     // 5-й
 ];
 
 function colorScale(kind, t) {
