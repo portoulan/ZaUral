@@ -193,7 +193,7 @@ th { position:sticky; top:0; background:#f7f8f9; z-index:1; }
 .author-badge {
   position: absolute;
   z-index: 1000;
-  right: 120px;
+  right: 140px;
   bottom: 4px;
   padding: 6px 11px;
   background: rgba(255,255,255,.94);
