@@ -9,11 +9,11 @@ const CONFIG = {
   flowArrowOpacity: 0.6,
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
-  arrowSpeed: [20, 40, 80],
+  arrowSpeed: [70, 150, 320],
   // Целевое расстояние между соседними штрихами на маршруте, px.
-  arrowSpacing: 25,
-  arrowMinCount: 2,
-  arrowMaxCount: 30,
+  arrowSpacing: 34,
+  arrowMinCount: 3,
+  arrowMaxCount: 14,
   // Минимальная длительность одного прохода штриха, сек — короткие
   // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
   arrowMinDuration: 1.1,
@@ -463,7 +463,7 @@ const baseLayer = L.geoJSON(null, {
     color: CONFIG.colors.boundary,
     weight: 1.25,
     fillColor: CONFIG.colors.boundaryFill,
-    fillOpacity: 0.75
+    fillOpacity: 0.42
   },
   onEachFeature: (feature, layer) => {
     const raw = feature?.properties?.prov_ENG || feature?.properties?.name || feature?.properties?.NAME;
@@ -683,12 +683,15 @@ function weightFor(value,max,year=state.currentYear){
 // Масштаб штриха-пятиугольника по величине потока — та же логика (и та же
 // опорная величина 1908 года), что раньше использовалась для толщины линии.
 function arrowScaleFor(value,max,year=state.currentYear){
-  if(!value||value<=0)return 0.35;
-  const minScale=0.35,maxScale=2.2;
+  if(!value||value<=0)return 0.18;
+  const minScale=0.18,maxScale=2.4;
   const reference1908=getFlowYearMaximum(1908);
   const reference=Math.max(reference1908,max||0);
   const ratio=reference>0?Math.max(0,Math.min(1,Number(value)/reference)):0;
-  const t=Math.sqrt(ratio);
+  // Степень >1 (вместо прежнего sqrt, т.е. степени 0.5) — раньше корень
+  // «поднимал» мелкие потоки, делая их визуально ближе к крупным; теперь
+  // кривая, наоборот, сильнее придавливает малые значения к минимуму.
+  const t=Math.pow(ratio,1.4);
   return minScale+(maxScale-minScale)*t;
 }
 
@@ -952,22 +955,12 @@ function buildYearButtons() {
     const btn=document.createElement('button');
     btn.textContent=year; btn.dataset.year=year;
     btn.onclick=()=>{
-      const wasPlaying=state.playing;
-
       // Перестраиваем маршруты, НЕ снимая flowLayer с карты заранее —
       // иначе у новых линий ещё нет DOM-элемента (getElement()===null) и
-      // штрихи/кораблики создать не на чем (анимация пропадала при смене года).
-      renderYear(year, wasPlaying);
-
-      if(wasPlaying){
-        state.playing=true;
-        updateAnimationButton();
-      } else {
-        state.playing=false;
-        state.flowsVisible=false;
-        if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
-        updateAnimationButton();
-      }
+      // штрихи/кораблики создать не на чем. Текущее состояние
+      // playing/paused просто переносится на новый год через setPlaying.
+      renderYear(year, state.playing);
+      setPlaying(state.playing);
     };
     box.appendChild(btn);
   });
@@ -975,22 +968,32 @@ function buildYearButtons() {
 }
 
 
-function pauseAnimation() {
-  state.playing=false;
-  if(state.timer)clearInterval(state.timer);
-  state.timer=null;
-  clearFlowArrows();
-  state.flowsVisible=false;
-  if(map.hasLayer(flowLayer))map.removeLayer(flowLayer);
+// Единая точка истины для состояния «играет/на паузе» — показывает или
+// прячет flowLayer и синхронизирует текст кнопки «Анимация». Все места,
+// где меняется проигрывание (кнопка, смена года, смена скорости),
+// используют именно её, а не дублируют эту логику каждое по-своему.
+function setPlaying(playing) {
+  state.playing = playing;
+  state.flowsVisible = playing;
+
+  if (playing) {
+    if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
+  } else {
+    clearFlowArrows();
+    if (map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
+  }
+
   updateAnimationButton();
 }
 
+function pauseAnimation() {
+  if (state.timer) clearInterval(state.timer);
+  state.timer = null;
+  setPlaying(false);
+}
 
 function startAnimation() {
-  state.flowsVisible=true;
-  if(!map.hasLayer(flowLayer))flowLayer.addTo(map);
-  state.playing=true;
-  updateAnimationButton();
+  setPlaying(true);
 }
 
 
@@ -999,10 +1002,10 @@ function toggleSpeed() {
   document.getElementById('speedBtn').textContent =
     `Скорость: ×${[1, 2, 4][state.speedIndex]}`;
 
-  // Rebuild only the selected year's flow paths with the new Ant Path delay.
-  const wasPlaying = state.playing;
-  renderYear(state.currentYear);
-  if (wasPlaying) startAnimation();
+  // Перестраиваем маршруты текущего года с новой скоростью, состояние
+  // playing/paused не меняем — просто переносим его на перерисованные линии.
+  renderYear(state.currentYear, state.playing);
+  setPlaying(state.playing);
 }
 
 
@@ -1022,21 +1025,11 @@ function changeYear(delta) {
   const ni=Math.max(0,Math.min(ys.length-1,i+delta));
   if(ni===i)return;
 
-  const wasPlaying=state.playing;
   // Перестраиваем маршруты, НЕ снимая flowLayer с карты заранее — иначе
   // у новых линий ещё нет DOM-элемента и штрихи/кораблики создать не на
-  // чем (анимация пропадала при смене года).
-  renderYear(ys[ni], wasPlaying);
-
-  if(wasPlaying){
-    state.playing=true;
-    updateAnimationButton();
-  } else {
-    state.playing=false;
-    state.flowsVisible=false;
-    if(map.hasLayer(flowLayer)) map.removeLayer(flowLayer);
-    updateAnimationButton();
-  }
+  // чем. Текущее состояние playing/paused просто переносится на новый год.
+  renderYear(ys[ni], state.playing);
+  setPlaying(state.playing);
 }
 function updateAnimationButton() {
   const btn=document.getElementById('animationBtn');
@@ -1104,20 +1097,20 @@ function buildRegionValues(kind) {
 
 // Красные оттенки — карта "ИСХОД"
 const FROM_COLORS = [
-  'rgba(240, 230, 140, 0.99)', // 1-й диапазон
-  'rgba(255, 145, 110, 0.99)', // 2-й
-  'rgba(232, 55, 40, 0.99)', // 3-й
-  'rgba(160, 20, 25, 0.99)',   // 4-й
-  'rgba(75, 0, 15, 0.99)'      // 5-й
+  'rgba(255, 220, 220, 0.95)', // 1-й диапазон
+  'rgba(255, 175, 175, 0.95)', // 2-й
+  'rgba(255, 125, 125, 0.95)', // 3-й
+  'rgba(230, 60, 60, 0.95)',   // 4-й
+  'rgba(180, 0, 0, 0.95)'      // 5-й
 ];
 
 // Зелёные оттенки — карта "ВОДВОРЕНИЕ"
 const TO_COLORS = [
-  'rgba(238, 232, 170, 0.99)', // 1-й диапазон
-  'rgba(180, 240, 160, 0.99)', // 2-й
-  'rgba(85, 190, 85, 0.99)', // 3-й
-  'rgba(40, 130, 45, 0.99)',   // 4-й
-  'rgba(20, 65, 25, 0.99)'     // 5-й
+  'rgba(215, 245, 220, 0.95)', // 1-й диапазон
+  'rgba(165, 230, 175, 0.95)', // 2-й
+  'rgba(105, 205, 125, 0.95)', // 3-й
+  'rgba(40, 160, 65, 0.95)',   // 4-й
+  'rgba(0, 105, 35, 0.95)'     // 5-й
 ];
 
 function colorScale(kind, t) {
