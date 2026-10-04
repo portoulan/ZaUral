@@ -1387,7 +1387,11 @@ updateAnimationButton();
     renderYear(CONFIG.years[0]);
 
     const bounds = baseLayer.getBounds();
-    if (bounds.isValid()) map.fitBounds(bounds.pad(0.04));
+    // animate:false — без этого fitBounds долетает до масштаба плавно, и
+    // если за это время успеть нажать «Анимация», длина маршрутов (а с ней
+    // и скорость штрихов) посчитается по промежуточному, ещё не финальному
+    // масштабу — отсюда более быстрая скорость при самом первом запуске.
+    if (bounds.isValid()) map.fitBounds(bounds.pad(0.04), {animate: false});
 
     document.getElementById('status').textContent = '';
   } catch (err) {
@@ -1407,8 +1411,17 @@ document.getElementById('panelToggle').onclick = () => {
 };
 
 document.getElementById('animationBtn').onclick=()=>{
-  if(state.playing) pauseAnimation();
-  else { renderYear(state.currentYear, true); startAnimation(); }
+  if(state.playing) {
+    pauseAnimation();
+  } else {
+    // Слой нужно прикрепить к карте ДО перестроения маршрутов — иначе у
+    // новых линий ещё нет DOM-элемента (getElement()===null) и штрихи/
+    // кораблики создать не на чем (именно поэтому кнопка «Анимация»
+    // переставала работать после первой же паузы, для любого года).
+    if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
+    renderYear(state.currentYear, true);
+    startAnimation();
+  }
 };
 
 document.getElementById('tablesBtn').onclick = () => {
