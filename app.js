@@ -17,7 +17,6 @@ const CONFIG = {
   // Минимальная длительность одного прохода штриха, сек — короткие
   // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
   arrowMinDuration: 1.1,
-
   // Маршруты-декорации с корабликами (список и число кораблей на каждом —
   // в SHIP_ROUTES). Скорость общая для всех — px/сек экрана.
   shipSpeed: [50, 100, 200]
@@ -686,7 +685,7 @@ function weightFor(value,max,year=state.currentYear){
 // опорная величина 1908 года), что раньше использовалась для толщины линии.
 function arrowScaleFor(value,max,year=state.currentYear){
   if(!value||value<=0)return 0.18;
-  const minScale=0.20,maxScale=2.4;
+  const minScale=0.25,maxScale=2.4;
   const reference1908=getFlowYearMaximum(1908);
   const reference=Math.max(reference1908,max||0);
   const ratio=reference>0?Math.max(0,Math.min(1,Number(value)/reference)):0;
@@ -869,7 +868,7 @@ function renderYear(year, animate = state.playing) {
     // частично нет (например, N703→N189→N192→…), штрихи остаются на
     // части до/после пути кораблика.
     if (animate) {
-      const scale = arrowScaleFor(route.value);
+      const scale = arrowScaleFor(route.value, max);
       const el = path.getElement();
 
       if (el && el.parentNode) {
@@ -1471,7 +1470,7 @@ document.getElementById('nextYearBtn').onclick=()=>changeYear(1);
 
 // Кнопка донатов: по клику копирует номер карты в буфер обмена.
 // ЗАМЕНИТЕ на реальный номер карты — сейчас здесь плейсхолдер.
-const DONATE_CARD_NUMBER = '4276 5500 0000 0000';
+const DONATE_CARD_NUMBER = '0000 0000 0000 0000';
 
 (function setupDonateButton() {
   const btn = document.getElementById('donateBtn');
