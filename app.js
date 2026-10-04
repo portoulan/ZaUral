@@ -17,7 +17,6 @@ const CONFIG = {
   // Минимальная длительность одного прохода штриха, сек — короткие
   // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
   arrowMinDuration: 1.1,
-
   // Маршруты-декорации с корабликами (список и число кораблей на каждом —
   // в SHIP_ROUTES). Скорость общая для всех — px/сек экрана.
   shipSpeed: [50, 100, 200]
@@ -684,24 +683,17 @@ function weightFor(value,max,year=state.currentYear){
 
 // Масштаб штриха-пятиугольника по величине потока — та же логика (и та же
 // опорная величина 1908 года), что раньше использовалась для толщины линии.
-// Ступенчатая шкала толщины штриха по фиксированным диапазонам величины
-// потока (а не по относительной доле от максимума) — 5 чётко различимых
-// уровней размера вместо плавного перехода.
-const FLOW_SIZE_STEPS = [
-  {upTo: 100,       scale: 0.2},
-  {upTo: 1000,      scale: 0.6},
-  {upTo: 10000,     scale: 1.2},
-  {upTo: 100000,    scale: 1.8},
-  {upTo: Infinity,  scale: 2.4}
-];
-
-function arrowScaleFor(value){
-  if(!value||value<=0)return FLOW_SIZE_STEPS[0].scale;
-  const v=Number(value);
-  for(const step of FLOW_SIZE_STEPS){
-    if(v<=step.upTo)return step.scale;
-  }
-  return FLOW_SIZE_STEPS[FLOW_SIZE_STEPS.length-1].scale;
+function arrowScaleFor(value,max,year=state.currentYear){
+  if(!value||value<=0)return 0.18;
+  const minScale=0.35,maxScale=2.4;
+  const reference1908=getFlowYearMaximum(1908);
+  const reference=Math.max(reference1908,max||0);
+  const ratio=reference>0?Math.max(0,Math.min(1,Number(value)/reference)):0;
+  // Степень >1 (вместо прежнего sqrt, т.е. степени 0.5) — раньше корень
+  // «поднимал» мелкие потоки, делая их визуально ближе к крупным; теперь
+  // кривая, наоборот, сильнее придавливает малые значения к минимуму.
+  const t=Math.pow(ratio,1.0);
+  return minScale+(maxScale-minScale)*t;
 }
 
 
@@ -876,7 +868,7 @@ function renderYear(year, animate = state.playing) {
     // частично нет (например, N703→N189→N192→…), штрихи остаются на
     // части до/после пути кораблика.
     if (animate) {
-      const scale = arrowScaleFor(route.value);
+      const scale = arrowScaleFor(route.value, max);
       const el = path.getElement();
 
       if (el && el.parentNode) {
