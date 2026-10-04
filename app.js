@@ -17,6 +17,10 @@ const CONFIG = {
   // Минимальная длительность одного прохода штриха, сек — короткие
   // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
   arrowMinDuration: 1.1,
+  // Границы масштаба штриха по величине потока (см. arrowScaleFor) —
+  // вынесены сюда, чтобы легенда-линейка строилась по тем же числам.
+  arrowMinScale: 0.35,
+  arrowMaxScale: 2.4,
   // Маршруты-декорации с корабликами (список и число кораблей на каждом —
   // в SHIP_ROUTES). Скорость общая для всех — px/сек экрана.
   shipSpeed: [50, 100, 200]
@@ -684,16 +688,51 @@ function weightFor(value,max,year=state.currentYear){
 // Масштаб штриха-пятиугольника по величине потока — та же логика (и та же
 // опорная величина 1908 года), что раньше использовалась для толщины линии.
 function arrowScaleFor(value,max,year=state.currentYear){
-  if(!value||value<=0)return 0.18;
-  const minScale=0.35,maxScale=2.4;
+  const minScale=CONFIG.arrowMinScale,maxScale=CONFIG.arrowMaxScale;
+  if(!value||value<=0)return minScale;
   const reference1908=getFlowYearMaximum(1908);
   const reference=Math.max(reference1908,max||0);
-  const ratio=reference>0?Math.max(0,Math.min(1,Number(value)/reference)):0;
-  // Степень >1 (вместо прежнего sqrt, т.е. степени 0.5) — раньше корень
-  // «поднимал» мелкие потоки, делая их визуально ближе к крупным; теперь
-  // кривая, наоборот, сильнее придавливает малые значения к минимуму.
-  const t=Math.pow(ratio,1.0);
-  return minScale+(maxScale-minScale)*t;
+  if(reference<=0)return minScale;
+  // Логарифмическая шкала: log(1+value)/log(1+reference). У миграционных
+  // потоков распределение сильно скошено (пара огромных маршрутов и
+  // масса небольших) — логарифм «сжимает» именно верхний хвост, оставляя
+  // больше видимого контраста в средней и нижней части диапазона, где
+  // раньше разница почти терялась.
+  const t=Math.log(1+Number(value))/Math.log(1+reference);
+  const clamped=Math.max(0,Math.min(1,t));
+  return minScale+(maxScale-minScale)*clamped;
+}
+
+// Легенда-линейка: несколько образцов штриха реального размера (по той же
+// формуле arrowScaleFor/логарифмической шкале, что и на карте) с подписью
+// величины потока — чтобы по толщине штриха на карте можно было прикинуть
+// порядок числа переселенцев, а не просто «больше/меньше».
+const FLOW_LEGEND_FRACTIONS = [0.04, 0.16, 0.4, 1];
+const FLOW_LEGEND_BOX = 46; // размер viewBox под самый крупный образец
+
+function updateFlowSizeLegend() {
+  const box = document.getElementById('flowSizeLegend');
+  if (!box) return;
+
+  const reference = getFlowYearMaximum(1908);
+  if (!reference) { box.innerHTML = ''; return; }
+
+  box.innerHTML = FLOW_LEGEND_FRACTIONS.map(fraction => {
+    const value = Math.max(1, Math.round(reference * fraction));
+    const scale = arrowScaleFor(value, reference);
+    const points = arrowPolygonPoints(scale);
+    const w = 18 * scale, h = 10 * scale;
+    const tx = (FLOW_LEGEND_BOX - w) / 2;
+    const ty = (FLOW_LEGEND_BOX / 2 - h) / 2;
+
+    return `
+      <div class="flow-legend-row">
+        <svg class="flow-legend-swatch" width="${FLOW_LEGEND_BOX}" height="${FLOW_LEGEND_BOX / 2}" viewBox="0 0 ${FLOW_LEGEND_BOX} ${FLOW_LEGEND_BOX / 2}">
+          <polygon points="${points}" fill="${CONFIG.colors.flow}" fill-opacity="${CONFIG.flowArrowOpacity}" transform="translate(${tx},${ty})"></polygon>
+        </svg>
+        <span>~${value.toLocaleString('ru-RU')} чел.</span>
+      </div>`;
+  }).join('');
 }
 
 
@@ -1380,6 +1419,7 @@ async function init() {
     indexData();
 
     buildYearButtons();
+    updateFlowSizeLegend();
     state.currentYear = CONFIG.years[0];
     state.flowsVisible = true;
     state.playing = false;
