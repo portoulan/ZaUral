@@ -688,10 +688,10 @@ function weightFor(value,max,year=state.currentYear){
 // потока (а не по относительной доле от максимума) — 5 чётко различимых
 // уровней размера вместо плавного перехода.
 const FLOW_SIZE_STEPS = [
-  {upTo: 100,       scale: 0.35},
-  {upTo: 1000,      scale: 0.9},
-  {upTo: 10000,     scale: 1.4},
-  {upTo: 100000,    scale: 1.9},
+  {upTo: 100,       scale: 0.2},
+  {upTo: 1000,      scale: 0.6},
+  {upTo: 10000,     scale: 1.2},
+  {upTo: 100000,    scale: 1.8},
   {upTo: Infinity,  scale: 2.4}
 ];
 
