@@ -17,6 +17,7 @@ const CONFIG = {
   // Минимальная длительность одного прохода штриха, сек — короткие
   // маршруты (мало узлов/мало px) не должны «мелькать» быстрее этого.
   arrowMinDuration: 1.1,
+
   // Маршруты-декорации с корабликами (список и число кораблей на каждом —
   // в SHIP_ROUTES). Скорость общая для всех — px/сек экрана.
   shipSpeed: [50, 100, 200]
@@ -681,18 +682,17 @@ function weightFor(value,max,year=state.currentYear){
   return minWeight+(maxWeight-minWeight)*t;
 }
 
-// Масштаб штриха-пятиугольника по величине потока — та же логика (и та же
-// опорная величина 1908 года), что раньше использовалась для толщины линии.
-function arrowScaleFor(value,max,year=state.currentYear){
-  if(!value||value<=0)return 0.18;
-  const minScale=0.35,maxScale=2.4;
-  const reference1908=getFlowYearMaximum(1908);
-  const reference=Math.max(reference1908,max||0);
-  const ratio=reference>0?Math.max(0,Math.min(1,Number(value)/reference)):0;
-  // Степень >1 (вместо прежнего sqrt, т.е. степени 0.5) — раньше корень
-  // «поднимал» мелкие потоки, делая их визуально ближе к крупным; теперь
-  // кривая, наоборот, сильнее придавливает малые значения к минимуму.
-  const t=Math.pow(ratio,1.0);
+// Масштаб штриха-пятиугольника по величине потока — та же опорная величина
+// 1908 года, что и раньше. Квадратичная кривая (ratio^2): даёт сильную
+// дифференциацию — малые и средние потоки заметно мельче, рост размера
+// ускоряется только ближе к максимуму.
+function arrowScaleFor(value){
+  const minScale=0.35, maxScale=2.4;
+  if(!value||value<=0)return minScale;
+  const reference=getFlowYearMaximum(1908);
+  if(reference<=0)return minScale;
+  const ratio=Math.max(0,Math.min(1,Number(value)/reference));
+  const t=ratio*ratio;
   return minScale+(maxScale-minScale)*t;
 }
 
@@ -868,7 +868,7 @@ function renderYear(year, animate = state.playing) {
     // частично нет (например, N703→N189→N192→…), штрихи остаются на
     // части до/после пути кораблика.
     if (animate) {
-      const scale = arrowScaleFor(route.value, max);
+      const scale = arrowScaleFor(route.value);
       const el = path.getElement();
 
       if (el && el.parentNode) {
