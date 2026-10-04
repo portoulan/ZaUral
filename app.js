@@ -683,16 +683,13 @@ function weightFor(value,max,year=state.currentYear){
 
 // Масштаб штриха-пятиугольника по величине потока — та же логика (и та же
 // опорная величина 1908 года), что раньше использовалась для толщины линии.
-function arrowScaleFor(value,max,year=state.currentYear){
-  if(!value||value<=0)return 0.18;
-  const minScale=0.35,maxScale=2.4;
-  const reference1908=getFlowYearMaximum(1908);
-  const reference=Math.max(reference1908,max||0);
-  const ratio=reference>0?Math.max(0,Math.min(1,Number(value)/reference)):0;
-  // Степень >1 (вместо прежнего sqrt, т.е. степени 0.5) — раньше корень
-  // «поднимал» мелкие потоки, делая их визуально ближе к крупным; теперь
-  // кривая, наоборот, сильнее придавливает малые значения к минимуму.
-  const t=Math.pow(ratio,1.0);
+function arrowScaleFor(value){
+  const minScale=0.35, maxScale=2.4;
+  if(!value||value<=0)return minScale;
+  const reference=getFlowYearMaximum(1908);
+  if(reference<=0)return minScale;
+  const ratio=Math.max(0,Math.min(1,Number(value)/reference));
+  const t=ratio*ratio;
   return minScale+(maxScale-minScale)*t;
 }
 
