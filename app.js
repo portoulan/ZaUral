@@ -692,7 +692,7 @@ function arrowScaleFor(value,max,year=state.currentYear){
   // Степень >1 (вместо прежнего sqrt, т.е. степени 0.5) — раньше корень
   // «поднимал» мелкие потоки, делая их визуально ближе к крупным; теперь
   // кривая, наоборот, сильнее придавливает малые значения к минимуму.
-  const t=Math.pow(ratio,0.7);
+  const t=Math.pow(ratio,0.1);
   return minScale+(maxScale-minScale)*t;
 }
 
