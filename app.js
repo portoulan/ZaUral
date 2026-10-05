@@ -1525,7 +1525,7 @@ document.getElementById('nextYearBtn').onclick=()=>changeYear(1);
 
 // Кнопка донатов: по клику копирует номер карты в буфер обмена.
 // ЗАМЕНИТЕ на реальный номер карты — сейчас здесь плейсхолдер.
-const DONATE_CARD_NUMBER = '0000 0000 0000 0000';
+const DONATE_CARD_NUMBER = '4276 5500 7827 1593';
 
 (function setupDonateButton() {
   const btn = document.getElementById('donateBtn');
