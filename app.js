@@ -1474,27 +1474,26 @@ document.getElementById('tablesBtn').onclick = () => {
   if (panelEl) panelEl.classList.add('hidden');
 };
 
+// «Диаграммы»: показывает диаграмму в панели и одновременно раскрашивает
+// саму карту (без легенды) по тому же показателю. Переключение «Исход»/
+// «Водворение» идёт через вкладки диаграммы (fromChartBtn/toChartBtn),
+// они же при mapChartsLinked=true дополнительно перекрашивают карту.
 document.getElementById('chartsBtn').onclick = () => {
-  showOnlyPanel('chartsPanel');
-  state.mapChartsLinked = false;
-  clearMapTheme();
-  showChart(state.chartKind);
-  updateChartTotal();
-};
-
-// «Карты»: теперь показывает в панели диаграмму (вместо отдельной панели
-// с легендой) и одновременно раскрашивает саму карту — без легенды.
-// Переключение «Исход»/«Водворение» идёт через вкладки диаграммы
-// (fromChartBtn/toChartBtn), они же при mapChartsLinked=true дополнительно
-// перекрашивают карту.
-document.getElementById('mapsBtn').onclick = () => {
-  const kind = state.mapKind || state.chartKind || 'from';
+  const kind = state.chartKind || state.mapKind || 'from';
   state.mapChartsLinked = true;
   state.chartKind = kind;
   showOnlyPanel('chartsPanel');
   showChart(kind);
   updateChartTotal();
   applyMapTheme(kind, false);
+};
+
+// «Карты» — без изменений: отдельная панель с цветовой легендой.
+document.getElementById('mapsBtn').onclick = () => {
+  showOnlyPanel('mapsPanel');
+  state.mapChartsLinked = false;
+  if (state.mapKind) applyMapTheme(state.mapKind);
+  else applyMapTheme('from');
 };
 
 document.getElementById('fromBtn').onclick = () => showTable('from');
@@ -1525,7 +1524,7 @@ document.getElementById('nextYearBtn').onclick=()=>changeYear(1);
 
 // Кнопка донатов: по клику копирует номер карты в буфер обмена.
 // ЗАМЕНИТЕ на реальный номер карты — сейчас здесь плейсхолдер.
-const DONATE_CARD_NUMBER = '4276 5500 7827 1593';
+const DONATE_CARD_NUMBER = '0000 0000 0000 0000';
 
 (function setupDonateButton() {
   const btn = document.getElementById('donateBtn');
