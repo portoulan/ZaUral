@@ -263,14 +263,39 @@ function addFlowArrows(latlngs, container, scale) {
   activeFlowArrows.push({latlngs, elements});
 }
 
-// Пересчитывает offset-path у всех активных штрихов после того, как
-// Leaflet пересчитал пиксельные координаты (конец зума/панорамы) —
-// иначе штрихи останутся «приклеены» к старой, уже не видимой линии.
+// Пересчитывает offset-path И длительность анимации у всех активных
+// штрихов/корабликов — нужно не только после зума/панорамы (иначе они
+// останутся «приклеены» к старой, уже не видимой линии), но и сразу
+// после первого запуска анимации: самый первый замер длины маршрута
+// (в addFlowArrows/addShipMarkers) мог случиться на кадр раньше, чем
+// Leaflet окончательно пересчитал пиксельные координаты после fitBounds —
+// из-за этого «запекалась» слегка заниженная длительность (штрихи бежали
+// быстрее заданного) и так и оставалась неизменной до следующей полной
+// перестройки (смены года). Сам offset-path при этом всегда пересчитывался
+// заново при смене года — поэтому ошибка была заметна только в скорости.
+//
+// Доля задержки (delay/duration) не меняется при пересчёте — читаем её из
+// уже выставленных инлайн-стилей и просто подставляем в новую
+// длительность, поэтому фаза движения штриха не «скачет».
 function layoutFlowArrows() {
   for (const entry of activeFlowArrows) {
-    const {d} = routePixelPath(entry.latlngs);
+    const {d, length} = routePixelPath(entry.latlngs);
+    if (length <= 0) continue;
+
     for (const el of entry.elements) {
       el.style.offsetPath = `path('${d}')`;
+
+      const oldDuration = parseFloat(el.style.animationDuration) || 0;
+      if (oldDuration <= 0) continue;
+
+      const delayRatio = (parseFloat(el.style.animationDelay) || 0) / oldDuration;
+      const isShip = el.classList.contains('flow-ship');
+      const newDuration = isShip
+        ? length / CONFIG.shipSpeed[state.speedIndex]
+        : Math.max(CONFIG.arrowMinDuration, length / CONFIG.arrowSpeed[state.speedIndex]);
+
+      el.style.animationDuration = `${newDuration}s`;
+      el.style.animationDelay = `${delayRatio * newDuration}s`;
     }
   }
 }
@@ -1421,6 +1446,13 @@ document.getElementById('animationBtn').onclick=()=>{
     if (!map.hasLayer(flowLayer)) flowLayer.addTo(map);
     renderYear(state.currentYear, true);
     startAnimation();
+
+    // Подстраховка именно на первый запуск: если длина маршрутов в
+    // renderYear() была замерена на кадр раньше, чем Leaflet окончательно
+    // пересчитал проекцию, requestAnimationFrame даёт браузеру домерить и
+    // мы сразу поправляем длительность — без этого скорость штрихов
+    // оставалась неверной до следующей перестройки (смены года).
+    requestAnimationFrame(() => requestAnimationFrame(layoutFlowArrows));
   }
 };
 
