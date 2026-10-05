@@ -6,7 +6,7 @@ const CONFIG = {
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
   },
-  flowArrowOpacity: 0.6,
+  flowArrowOpacity: 0.65,
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
   arrowSpeed: [20, 40, 80],
