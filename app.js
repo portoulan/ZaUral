@@ -6,7 +6,7 @@ const CONFIG = {
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
   },
-  flowArrowOpacity: 0.55,
+  flowArrowOpacity: 0.6,
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
   arrowSpeed: [20, 40, 80],
@@ -1524,7 +1524,7 @@ document.getElementById('nextYearBtn').onclick=()=>changeYear(1);
 
 // Кнопка донатов: по клику копирует номер карты в буфер обмена.
 // ЗАМЕНИТЕ на реальный номер карты — сейчас здесь плейсхолдер.
-const DONATE_CARD_NUMBER = '4276 5500 7827 1593';
+const DONATE_CARD_NUMBER = '0000 0000 0000 0000';
 
 (function setupDonateButton() {
   const btn = document.getElementById('donateBtn');
