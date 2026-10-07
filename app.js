@@ -6,7 +6,7 @@ const CONFIG = {
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
   },
-  flowArrowOpacity: 0.55,
+  flowArrowOpacity: 0.6,
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
   arrowSpeed: [20, 40, 80],
@@ -1159,6 +1159,12 @@ function colorScale(kind, t) {
   return TO_COLORS[index];
 }
 
+// Степень сжатия шкалы раскраски регионов — используется и при расчёте
+// цвета (applyMapTheme), и при обратном пересчёте границ для легенды
+// (renderMapLegend), чтобы подписи легенды совпадали с реальными порогами
+// цвета на карте.
+const MAP_COLOR_POWER = 0.45;
+
 function applyMapTheme(kind, showLegend = true) {
   state.mapKind = kind;
 
@@ -1180,7 +1186,7 @@ function applyMapTheme(kind, showLegend = true) {
       return;
     }
 
-    const t = Math.pow(value / max, 0.45);
+    const t = Math.pow(value / max, MAP_COLOR_POWER);
     layer.setStyle({
       color: CONFIG.colors.boundary,
       weight: 1.6,
@@ -1206,10 +1212,16 @@ function renderMapLegend(kind,max){
     box.innerHTML=`<div class="map-legend-title">${title}</div><div>Нет ненулевых значений для выбранного года.</div><div class="year-info">${yearTotalText()}</div>`;
     return;
   }
+  // Границы диапазонов — те же пороги t (0/.2/.4/.6/.8/1), что использует
+  // colorScale, но переведённые в реальные числа через ОБРАТНУЮ степенную
+  // функцию (на карте t = (value/max)^MAP_COLOR_POWER) — иначе подписи
+  // легенды были бы линейными, а цвет на карте — степенным, и границы
+  // не совпадали бы с тем, что реально нарисовано.
+  const valueAtT = t => max * Math.pow(t, 1 / MAP_COLOR_POWER);
   const bands=[[0,.2],[.2,.4],[.4,.6],[.6,.8],[.8,1]];
   const rows=bands.map(([lo,hi],i)=>{
-    const low=i===0?1:Math.floor(max*lo)+1;
-    const high=i===4?Math.round(max):Math.floor(max*hi);
+    const low=i===0?1:Math.floor(valueAtT(lo))+1;
+    const high=i===4?Math.round(max):Math.floor(valueAtT(hi));
     return `<div class="map-legend-row"><span class="map-legend-swatch" style="background:${colorScale(kind,(lo+hi)/2)}"></span><span>${low.toLocaleString('ru-RU')}–${high.toLocaleString('ru-RU')}</span></div>`;
   }).join('');
   box.innerHTML=`<div class="map-legend-title">${title}</div>${rows}<div class="year-info">${yearTotalText()}</div>`;
@@ -1524,7 +1536,7 @@ document.getElementById('nextYearBtn').onclick=()=>changeYear(1);
 
 // Кнопка донатов: по клику копирует номер карты в буфер обмена.
 // ЗАМЕНИТЕ на реальный номер карты — сейчас здесь плейсхолдер.
-const DONATE_CARD_NUMBER = '4276 5500 7827 1593';
+const DONATE_CARD_NUMBER = '0000 0000 0000 0000';
 
 (function setupDonateButton() {
   const btn = document.getElementById('donateBtn');
