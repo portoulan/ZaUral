@@ -6,7 +6,7 @@ const CONFIG = {
     boundary: '#7d8790',
     boundaryFill: '#e9edf0'
   },
-  flowArrowOpacity: 0.6,
+  flowArrowOpacity: 0.5,
   // Скорость бега штрихов по маршруту, px/сек экрана — по индексу скорости
   // (кнопка «Скорость»). Чем больше — тем быстрее.
   arrowSpeed: [20, 40, 80],
@@ -1127,20 +1127,20 @@ function buildRegionValues(kind) {
 
 // Красные оттенки — карта "ИСХОД"
 const FROM_COLORS = [
-  'rgba(240, 230, 140, 0.99)', // 1-й диапазон
-  'rgba(255, 145, 110, 0.99)', // 2-й
-  'rgba(232, 55, 40, 0.99)', // 3-й
-  'rgba(160, 20, 25, 0.99)',   // 4-й
-  'rgba(75, 0, 15, 0.99)'      // 5-й
+  'rgba(240, 230, 140, 0.9)', // 1-й диапазон
+  'rgba(255, 145, 110, 0.9)', // 2-й
+  'rgba(255, 0, 0, 0.9)', // 3-й
+  'rgba(220, 20, 60, 0.9)',   // 4-й
+  'rgba(139, 0, 0, 0.9)'      // 5-й
 ];
 
 // Зелёные оттенки — карта "ВОДВОРЕНИЕ"
 const TO_COLORS = [
-  'rgba(238, 232, 170, 0.99)', // 1-й диапазон
-  'rgba(180, 240, 160, 0.99)', // 2-й
-  'rgba(85, 190, 85, 0.99)', // 3-й
-  'rgba(40, 130, 45, 0.99)',   // 4-й
-  'rgba(20, 65, 25, 0.99)'     // 5-й
+  'rgba(238, 232, 170, 0.9)', // 1-й диапазон
+  'rgba(180, 240, 160, 0.9)', // 2-й
+  'rgba(85, 190, 85, 0.9)', // 3-й
+  'rgba(40, 130, 45, 0.9)',   // 4-й
+  'rgba(20, 65, 25, 0.9)'     // 5-й
 ];
 
 function colorScale(kind, t) {
@@ -1181,7 +1181,7 @@ function applyMapTheme(kind, showLegend = true) {
         color: CONFIG.colors.boundary,
         weight: 1.5,
         fillColor: '#eef1f4',
-        fillOpacity: 0.16
+        fillOpacity: 0.2
       });
       return;
     }
@@ -1191,7 +1191,7 @@ function applyMapTheme(kind, showLegend = true) {
       color: CONFIG.colors.boundary,
       weight: 1.6,
       fillColor: colorScale(kind, t),
-      fillOpacity: 0.5
+      fillOpacity: 0.4
     });
   });
 
