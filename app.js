@@ -1181,7 +1181,7 @@ function applyMapTheme(kind, showLegend = true) {
         color: CONFIG.colors.boundary,
         weight: 1.5,
         fillColor: '#eef1f4',
-        fillOpacity: 0.08
+        fillOpacity: 0.16
       });
       return;
     }
@@ -1191,7 +1191,7 @@ function applyMapTheme(kind, showLegend = true) {
       color: CONFIG.colors.boundary,
       weight: 1.6,
       fillColor: colorScale(kind, t),
-      fillOpacity: 0.25
+      fillOpacity: 0.5
     });
   });
 
