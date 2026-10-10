@@ -1207,7 +1207,7 @@ function applyMapTheme(kind, showLegend = true) {
 function renderMapLegend(kind,max){
   const box=document.getElementById('mapLegend');
   if(!box)return;
-  const title=kind==='from'?'исход':'водворение';
+  const title=kind==='from'?'Число переселенцев и ходоков - исход':'Число переселенцев и ходоков - водворение';
   if(!max||max<=0){
     box.innerHTML=`<div class="map-legend-title">${title}</div><div>Нет ненулевых значений для выбранного года.</div><div class="year-info">${yearTotalText()}</div>`;
     return;
