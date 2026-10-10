@@ -1042,7 +1042,7 @@ function toggleSpeed() {
 
 
 const YEAR_TOTALS={1896:190302,1897:84733,1898:200080,1899:221034,1900:218552,1901:119557,1902:110396,1903:125444,1904:46719,1905:44029,1906:216646,1907:576211,1908:758770,1909:707077,1910:352950,1911:226062,1912:259585,1913:327430,1914:336409,1915:28185,1916:11201};
-function yearTotalText(){return `${state.currentYear} год - ${YEAR_TOTALS[state.currentYear]??0} переселенцев`;}
+function yearTotalText(){return `${state.currentYear} год - ${YEAR_TOTALS[state.currentYear]??0} переселенцев и ходоков`;}
 function updateYearInfo(){document.querySelectorAll('.year-info,.chart-total').forEach(e=>e.textContent=yearTotalText());}
 function updateYearArrowButtons(){
  const ys=CONFIG.years, i=ys.indexOf(Number(state.currentYear));
@@ -1207,7 +1207,7 @@ function applyMapTheme(kind, showLegend = true) {
 function renderMapLegend(kind,max){
   const box=document.getElementById('mapLegend');
   if(!box)return;
-  const title=kind==='from'?'Число переселенцев — исход':'Число переселенцев — водворение';
+  const title=kind==='from'?'Число переселенцев и ходоков — исход':'Число переселенцев и ходоков — водворение';
   if(!max||max<=0){
     box.innerHTML=`<div class="map-legend-title">${title}</div><div>Нет ненулевых значений для выбранного года.</div><div class="year-info">${yearTotalText()}</div>`;
     return;
@@ -1297,7 +1297,7 @@ function showTable(kind) {
   document.getElementById('tableContent').innerHTML = `
     <div class="table-scroll">
       <table>
-        <thead><tr><th>регион</th><th>число переселенцев</th></tr></thead>
+        <thead><tr><th>регион</th><th>число переселенцев и ходоков</th></tr></thead>
         <tbody>
           ${list.map(r => `
             <tr><td>${escapeHtml(r.name)}</td><td>${r.value.toLocaleString('ru-RU')}</td></tr>
@@ -1381,7 +1381,7 @@ function showChart(kind) {
           callbacks: {
             label: context => {
               const value = Number(context.raw || 0);
-              return `${context.label}: ${value.toLocaleString('ru-RU')} переселенцев`;
+              return `${context.label}: ${value.toLocaleString('ru-RU')} переселенцев и ходоков`;
             }
           }
         }
